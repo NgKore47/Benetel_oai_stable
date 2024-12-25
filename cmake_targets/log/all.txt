@@ -1,0 +1,64 @@
+[1/6] Generating LDPC bnProc header files for 128-bit SIMD
+[2/6] Generating LDPC cnProc header files for 128-bit SIMD
+[3/6] Checking validity of VCD files
+[4/6] Building C object CMakeFiles/PHY_NR.dir/openair1/PHY/INIT/nr_init.c.o
+In file included from /home/seven/slum_dawg_testing/F_release/openairinterface5g/common/utils/LOG/log.h:342,
+                 from /home/seven/slum_dawg_testing/F_release/openairinterface5g/openair1/PHY/TOOLS/tools_defs.h:41,
+                 from /home/seven/slum_dawg_testing/F_release/openairinterface5g/radio/COMMON/common_lib.h:38,
+                 from /home/seven/slum_dawg_testing/F_release/openairinterface5g/openair1/PHY/defs_common.h:56,
+                 from /home/seven/slum_dawg_testing/F_release/openairinterface5g/executables/softmodem-common.h:34,
+                 from /home/seven/slum_dawg_testing/F_release/openairinterface5g/openair1/PHY/INIT/nr_init.c:22:
+/home/seven/slum_dawg_testing/F_release/openairinterface5g/openair1/PHY/INIT/nr_init.c: In function ‘nr_phy_config_request’:
+/home/seven/slum_dawg_testing/F_release/openairinterface5g/openair1/PHY/INIT/nr_init.c:385:14: warning: format ‘%u’ expects argument of type ‘unsigned int’, but argument 5 has type ‘uint64_t’ {aka ‘long unsigned int’} [-Wformat=]
+  385 |   LOG_I(PHY, "dl_frequency.value : %u Mhz , dl_bw_khz : %u\n",gNB_config->carrier_config.dl_frequency.value, dl_bw_khz);
+      |              ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~                                                ~~~~~~~~~
+      |                                                                                                              |
+      |                                                                                                              uint64_t {aka long unsigned int}
+/home/seven/slum_dawg_testing/F_release/openairinterface5g/common/utils/T/T.h:71:33: note: in definition of macro ‘T_PUT_printf_deref’
+   71 | #define T_PUT_printf_deref(...) __VA_ARGS__
+      |                                 ^~~~~~~~~~~
+/home/seven/slum_dawg_testing/F_release/openairinterface5g/common/utils/T/T.h:257:7: note: in expansion of macro ‘T_PUT_printf’
+  257 |       T_PUT_##t0(2, x0); \
+      |       ^~~~~~
+/home/seven/slum_dawg_testing/F_release/openairinterface5g/common/utils/T/T.h:108:45: note: in expansion of macro ‘T3’
+  108 |              n33,n34,n35,n36,n37,n38,n,...) T##n
+      |                                             ^
+/home/seven/slum_dawg_testing/F_release/openairinterface5g/common/utils/T/T.h:109:57: note: in expansion of macro ‘TN’
+  109 | #define T(...) do { if (T_stdout == 0 || T_stdout == 2) TN(__VA_ARGS__); } while (0)
+      |                                                         ^~
+/home/seven/slum_dawg_testing/F_release/openairinterface5g/common/utils/LOG/log.h:373:5: note: in expansion of macro ‘T’
+  373 |     T(T_LEGACY_##c##_INFO, T_PRINTF(x));                                   \
+      |     ^
+/home/seven/slum_dawg_testing/F_release/openairinterface5g/common/utils/LOG/log.h:373:28: note: in expansion of macro ‘T_PRINTF’
+  373 |     T(T_LEGACY_##c##_INFO, T_PRINTF(x));                                   \
+      |                            ^~~~~~~~
+/home/seven/slum_dawg_testing/F_release/openairinterface5g/openair1/PHY/INIT/nr_init.c:385:3: note: in expansion of macro ‘LOG_I’
+  385 |   LOG_I(PHY, "dl_frequency.value : %u Mhz , dl_bw_khz : %u\n",gNB_config->carrier_config.dl_frequency.value, dl_bw_khz);
+      |   ^~~~~
+/home/seven/slum_dawg_testing/F_release/openairinterface5g/openair1/PHY/INIT/nr_init.c:385:58: note: format string is defined here
+  385 |   LOG_I(PHY, "dl_frequency.value : %u Mhz , dl_bw_khz : %u\n",gNB_config->carrier_config.dl_frequency.value, dl_bw_khz);
+      |                                                         ~^
+      |                                                          |
+      |                                                          unsigned int
+      |                                                         %lu
+In file included from /home/seven/slum_dawg_testing/F_release/openairinterface5g/openair1/PHY/TOOLS/tools_defs.h:41,
+                 from /home/seven/slum_dawg_testing/F_release/openairinterface5g/radio/COMMON/common_lib.h:38,
+                 from /home/seven/slum_dawg_testing/F_release/openairinterface5g/openair1/PHY/defs_common.h:56,
+                 from /home/seven/slum_dawg_testing/F_release/openairinterface5g/executables/softmodem-common.h:34,
+                 from /home/seven/slum_dawg_testing/F_release/openairinterface5g/openair1/PHY/INIT/nr_init.c:22:
+/home/seven/slum_dawg_testing/F_release/openairinterface5g/openair1/PHY/INIT/nr_init.c:385:14: warning: format ‘%u’ expects argument of type ‘unsigned int’, but argument 8 has type ‘uint64_t’ {aka ‘long unsigned int’} [-Wformat=]
+  385 |   LOG_I(PHY, "dl_frequency.value : %u Mhz , dl_bw_khz : %u\n",gNB_config->carrier_config.dl_frequency.value, dl_bw_khz);
+      |              ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~                                                ~~~~~~~~~
+      |                                                                                                              |
+      |                                                                                                              uint64_t {aka long unsigned int}
+/home/seven/slum_dawg_testing/F_release/openairinterface5g/common/utils/LOG/log.h:376:72: note: in definition of macro ‘LOG_I’
+  376 |         logRecord_mt(__FILE__, __FUNCTION__, __LINE__, c, OAILOG_INFO, x); \
+      |                                                                        ^
+/home/seven/slum_dawg_testing/F_release/openairinterface5g/openair1/PHY/INIT/nr_init.c:385:58: note: format string is defined here
+  385 |   LOG_I(PHY, "dl_frequency.value : %u Mhz , dl_bw_khz : %u\n",gNB_config->carrier_config.dl_frequency.value, dl_bw_khz);
+      |                                                         ~^
+      |                                                          |
+      |                                                          unsigned int
+      |                                                         %lu
+[5/6] Linking C static library libPHY_NR.a
+[6/6] Linking CXX executable nr-softmodem
