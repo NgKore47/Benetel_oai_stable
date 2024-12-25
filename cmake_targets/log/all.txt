@@ -1,0 +1,30 @@
+[1/16] Generating LDPC cnProc header files for 128-bit SIMD
+[2/16] Checking validity of VCD files
+[3/16] Generating LDPC bnProc header files for 128-bit SIMD
+[4/16] Linking C shared module librfsimulator.so
+[5/16] Linking C static library libngap.a
+[6/16] Linking CXX static library openair2/LAYER2/nr_rlc/libnr_rlc.a
+[7/16] Building C object radio/fhi_72/CMakeFiles/oran_fhlib_5g.dir/oran_isolate.c.o
+[8/16] Building C object radio/fhi_72/CMakeFiles/oran_fhlib_5g.dir/oran-init.c.o
+[9/16] Building C object radio/fhi_72/CMakeFiles/oran_fhlib_5g.dir/oaioran.c.o
+In file included from /home/seven/slum_dawg_testing/Benetel_oai_stable/radio/fhi_72/oaioran.c:34:
+/home/seven/wafi/test/ARIA_BINARY/phy/fhi_lib/lib/api/../src/xran_common.h:185:16: warning: inline function ‘prepare_sf_slot_sym’ declared but never defined
+  185 | inline int32_t prepare_sf_slot_sym (enum xran_pkt_dir direction,
+      |                ^~~~~~~~~~~~~~~~~~~
+In file included from /home/seven/wafi/test/ARIA_BINARY/phy/fhi_lib/lib/api/../src/xran_dev.h:44,
+                 from /home/seven/wafi/test/ARIA_BINARY/phy/fhi_lib/lib/api/../src/xran_common.h:47,
+                 from /home/seven/slum_dawg_testing/Benetel_oai_stable/radio/fhi_72/oaioran.c:34:
+/home/seven/wafi/test/ARIA_BINARY/phy/fhi_lib/lib/api/xran_up_api.h:95:12: warning: inline function ‘xran_prepare_iq_symbol_portion’ declared but never defined
+   95 | inline int xran_prepare_iq_symbol_portion(
+      |            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from /home/seven/slum_dawg_testing/Benetel_oai_stable/radio/fhi_72/oaioran.c:34:
+/home/seven/wafi/test/ARIA_BINARY/phy/fhi_lib/lib/api/../src/xran_common.h:192:23: warning: ‘prepare_symbol_opt’ declared ‘static’ but never defined [-Wunused-function]
+  192 | static inline int32_t prepare_symbol_opt(enum xran_pkt_dir direction,
+      |                       ^~~~~~~~~~~~~~~~~~
+[10/16] Linking CXX static library libL2_NR.a
+[11/16] Building C object radio/fhi_72/CMakeFiles/oran_fhlib_5g.dir/oran-config.c.o
+[12/16] Linking CXX static library libf1ap.a
+[13/16] Linking C shared module liboran_fhlib_5g.so
+[14/16] Linking CXX executable nr-cuup
+[15/16] Linking CXX static library libL2_LTE_NR.a
+[16/16] Linking CXX executable nr-softmodem
