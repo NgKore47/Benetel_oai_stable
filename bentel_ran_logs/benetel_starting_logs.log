@@ -1,0 +1,58 @@
+root@benetelru:~# cat /tmp/logs/radio_status
+[INFO] /etc/ru-center-frequency-mhz read
+[INFO] /home/root/adrv9025/RAN550_n78_4T2R/ directory used
+[INFO] adrv9025 files OK
+[INFO] Platform: RAN650_A
+[INFO] Frequency: 3350.01
+[INFO] SW Version: RAN550-1v1.0.4-605a25a
+[INFO] Read EEPROM with eeprom2ram
+[INFO] Read EEPROM with benetel_read_ru_eeprom.sh
+[INFO] Radio bringup begin, 95.97 seconds since boot
+[INFO] Initialize TDD Pattern
+[INFO] Setting initialization TDD Pattern: DDDDDDDSUU
+[INFO] Waiting for PTP sync
+[INFO] Sync completed
+[INFO] Disable transmission during radio initialisation
+[INFO] Set expected DU MAC Address for C-Plane Traffic (C0319/C031A)
+[INFO] Set expected DU MAC Address for U-Plane Traffic (C0315/C0316)
+[INFO] Set required DU VLAN Tag Control Information for uplink U-Plane Traffic (C0318)
+[INFO] Set expected DU VLAN Tag Control Information for downlink U-Plane Traffic (C0330)
+[INFO] Set expected DU VLAN Tag Control Information for downlink C-Plane Traffic (C0331)
+[INFO] Aligning FPGA uplink timing to arrival of uplink frame(C0303)
+[INFO] The benetel_extend_eeprom check is complete and passed
+[INFO] Set Downlink scaling to 0 dB (C0358)
+[INFO] Enable short form PRACH (C0328)
+[INFO] Compression mode: Static, Compression method: 9-bit BFP 
+[INFO] Aligning TDD switching relative to downlink and uplink data and with respect to PPS (C0366)
+[INFO] Set expected RU PRACH Configuration Index (C0322)
+[INFO] C-plane per symbol disabled and cuplane dl coupling via section ID disabled (C037B to 0x1)
+[INFO] enable the LF prach compression (C0353)
+[INFO] Enabling 4 SF PRACH receive paths
+[INFO] Configure eAxC ID via /etc/eaxc.xml settings, as M-Plane is disabled.
+[INFO] Start Radio Configuration
+[INFO] Initialize RF SoC
+[INFO] Center frequency set to 3350.01 MHz
+[INFO] Initialize RF SoC
+[INFO] Enable PA protection on transmitters
+[INFO] Load GP interrupt configuration into Madura
+[INFO] Call interrupt handler once to clear any sticky interrupts left over from initialization
+[INFO] Configure CFR for Antenna 1 (0.54)
+[INFO] Configure CFR for Antenna 2 (0.54)
+[INFO] Configure CFR for Antenna 3 (0.54)
+[INFO] Configure CFR for Antenna 4 (0.54)
+[INFO] Enable FPGA-controlled TDD switching
+[INFO] DPD Tx1 configuration
+[INFO] DPD Tx2 configuration
+[INFO] DPD Tx3 configuration
+[INFO] DPD Tx4 configuration
+[INFO] Disable transmission
+[INFO] Set the gain to 24.000000 dB
+[INFO] Disable transmission
+[INFO] Set the bandwidth to 100000000 Hz
+[INFO] Modifying the TDD pattern from default to custom
+[INFO] Transmission enabled (4x4)
+[INFO] Setting DL UL tuning special slot to 0x13b6
+[INFO] Radio bringup complete
+ 11:16:15 up 5 min,  load average: 0.24, 0.35, 0.19
+[INFO] Launching o_ru_app
+
