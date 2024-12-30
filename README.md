@@ -90,6 +90,10 @@ sudo cpupower frequency-set --governor performance
 
 ## 2.3 Tuned Profile
 
+```shell
+sudo apt install tuned
+```
+
 Real-time profile should be activated now:
 
 Update the `/etc/tuned/realtime-variables.conf` file by adding the isolated cores
@@ -106,6 +110,10 @@ isolated_cores=0-13
 # kernel supports it.
 #
 # isolate_managed_irq=Y
+```
+
+```shell
+sudo tuned-adm profile realtime
 ```
 
 # 3. DPDK(Data Plane Development Kit) 20.11.7]
