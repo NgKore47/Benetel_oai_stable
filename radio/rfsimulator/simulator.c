@@ -177,7 +177,6 @@ typedef struct {
   double chan_pathloss;
   double chan_forgetfact;
   uint64_t chan_offset;
-  float  noise_power_dB;
   void *telnetcmd_qid;
   poll_telnetcmdq_func_t poll_telnetcmdq;
   int wait_timeout;
@@ -456,7 +455,7 @@ static int rfsimu_setchanmod_cmd(char *buff, int debug, telnet_printfunc_t prnt,
                                                           t->chan_forgetfact, // forgetting_factor
                                                           t->chan_offset, // propagation delay in samples
                                                           t->chan_pathloss,
-                                                          t->noise_power_dB); // path_loss in dB
+                                                          0); // noise_power
           set_channeldesc_owner(newmodel, RFSIMU_MODULEID);
           set_channeldesc_name(newmodel,modelname);
           random_channel(newmodel,false);
@@ -973,7 +972,7 @@ static int rfsimulator_read(openair0_device *device, openair0_timestamp *ptimest
     }
   } else {
     bool have_to_wait;
-
+    int loops = 0;
     do {
       have_to_wait=false;
 
@@ -995,13 +994,26 @@ static int rfsimulator_read(openair0_device *device, openair0_timestamp *ptimest
               t->nextRxTstamp + nsamps);
         flushInput(t, 3, nsamps);
       }
+      if (loops++ > 10 && t->role == SIMU_ROLE_SERVER) {
+        // Just start producing samples. The clients will catch up.
+        have_to_wait = false;
+        LOG_W(HW,
+              "No longer waiting for clients to catch up, starting to produce samples\n");
+      }
     } while (have_to_wait);
   }
+
+
+  struct timespec start_time;
+  int ret = clock_gettime(CLOCK_REALTIME, &start_time);
+  AssertFatal(ret == 0, "clock_gettime() failed: errno %d, %s\n", errno, strerror(errno));
 
   // Clear the output buffer
   for (int a=0; a<nbAnt; a++)
     memset(samplesVoid[a],0,sampleToByte(nsamps,1));
-
+  cf_t temp_array[nbAnt][nsamps];
+  bool apply_noise_per_channel = get_noise_power_dBFS() == INVALID_DBFS_VALUE;
+  int num_chanmod_channels = 0;
   // Add all input nodes signal in the output buffer
   for (int sock = 0; sock < MAX_FD_RFSIMU; sock++) {
     buffer_t *ptr=&t->buf[sock];
@@ -1019,12 +1031,18 @@ static int rfsimulator_read(openair0_device *device, openair0_timestamp *ptimest
 
       for (int a=0; a<nbAnt; a++) {//loop over number of Rx antennas
         if ( ptr->channel_model != NULL ) { // apply a channel model
-          rxAddInput(ptr->circularBuf, (c16_t *) samplesVoid[a],
+          if (num_chanmod_channels == 0) {
+            memset(temp_array, 0, sizeof(temp_array));
+          }
+          num_chanmod_channels++;
+          rxAddInput(ptr->circularBuf,
+                     temp_array[a],
                      a,
                      ptr->channel_model,
                      nsamps,
                      t->nextRxTstamp,
-                     CirSize);
+                     CirSize,
+                     apply_noise_per_channel);
         }
         else { // no channel modeling
           int nbAnt_tx = ptr->th.nbAnt; // number of Tx antennas
@@ -1058,6 +1076,37 @@ static int rfsimulator_read(openair0_device *device, openair0_timestamp *ptimest
       } // end for a (number of rx antennas)
     }
   }
+  if (apply_noise_per_channel && num_chanmod_channels > 0) {
+    // Noise is already applied through the channel model
+    for (int a = 0; a < nbAnt; a++) {
+      sample_t *out = (sample_t *)samplesVoid[a];
+      for (int i = 0; i < nsamps; i++) {
+        out[i].r += lroundf(temp_array[a][i].r);
+        out[i].i += lroundf(temp_array[a][i].i);
+      }
+    }
+  } else if (num_chanmod_channels > 0) {
+    // Apply noise from global setting
+    int16_t noise_power = (int16_t)(32767.0 / powf(10.0, .05 * -get_noise_power_dBFS()));
+    for (int a = 0; a < nbAnt; a++) {
+      sample_t *out = (sample_t *)samplesVoid[a];
+      for (int i = 0; i < nsamps; i++) {
+        out[i].r += lroundf(temp_array[a][i].r + noise_power * gaussZiggurat(0.0, 1.0));
+        out[i].i += lroundf(temp_array[a][i].i + noise_power * gaussZiggurat(0.0, 1.0));
+      }
+    }
+  }
+
+  struct timespec end_time;
+  ret = clock_gettime(CLOCK_REALTIME, &end_time);
+  AssertFatal(ret == 0, "clock_gettime() failed: errno %d, %s\n", errno, strerror(errno));
+  double diff_ns = (end_time.tv_sec - start_time.tv_sec) * 1000000000 + (end_time.tv_nsec - start_time.tv_nsec);
+  static double average = 0.0;
+  average = (average * 0.98) + ( nsamps / (diff_ns / 1e9) * 0.02);
+  static int calls = 0;
+  if (calls++ % 10000 == 0) {
+    LOG_D(HW, "Rfsimulator: velocity %.2f Msps, realtime requirements %.2f Msps\n", average / 1e6, t->sample_rate / 1e6);
+  }
 
   *ptimestamp = t->nextRxTstamp; // return the time of the first sample
   t->nextRxTstamp+=nsamps;
@@ -1085,7 +1134,16 @@ static void rfsimulator_end(openair0_device *device) {
   }
   close(s->epollfd);
   hashtable_destroy(&s->fd_to_buf_map);
+  free(s);
 }
+static void stopServer(openair0_device *device)
+{
+  rfsimulator_state_t *t = (rfsimulator_state_t *) device->priv;
+  DevAssert(t != NULL);
+  close(t->listen_sock);
+  rfsimulator_end(device);
+}
+
 static int rfsimulator_stop(openair0_device *device) {
   return 0;
 }
@@ -1136,7 +1194,7 @@ int device_init(openair0_device *device, openair0_config_t *openair0_cfg) {
   device->trx_start_func = rfsimulator->role == SIMU_ROLE_SERVER ? startServer : startClient;
   device->trx_get_stats_func   = rfsimulator_get_stats;
   device->trx_reset_stats_func = rfsimulator_reset_stats;
-  device->trx_end_func         = rfsimulator_end;
+  device->trx_end_func         = rfsimulator->role == SIMU_ROLE_SERVER ? stopServer : rfsimulator_end;
   device->trx_stop_func        = rfsimulator_stop;
   device->trx_set_freq_func    = rfsimulator_set_freq;
   device->trx_set_gains_func   = rfsimulator_set_gains;

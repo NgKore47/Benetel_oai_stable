@@ -45,7 +45,7 @@
 #include "NR_ReconfigurationWithSync.h"
 #include "NR_ServingCellConfig.h"
 #include "NR_UE-NR-Capability.h"
-#include "PHY/CODING/nrLDPC_extern.h"
+#include "PHY/CODING/nrLDPC_coding/nrLDPC_coding_interface.h"
 #include "PHY/INIT/nr_phy_init.h"
 #include "PHY/MODULATION/nr_modulation.h"
 #include "PHY/NR_REFSIG/dmrs_nr.h"
@@ -106,9 +106,6 @@ RAN_CONTEXT_t RC;
 char *uecap_file;
 int32_t uplink_frequency_offset[MAX_NUM_CCs][4];
 
-uint16_t sf_ahead=4 ;
-int slot_ahead=6 ;
-uint16_t sl_ahead=0;
 double cpuf;
 //uint8_t nfapi_mode = 0;
 uint64_t downlink_frequency[MAX_NUM_CCs][4];
@@ -129,7 +126,7 @@ void nr_derive_key_ng_ran_star(uint16_t pci, uint64_t nr_arfcn_dl, const uint8_t
 extern void fix_scd(NR_ServingCellConfig_t *scd);// forward declaration
 
 void e1_bearer_context_setup(const e1ap_bearer_setup_req_t *req) { abort(); }
-void e1_bearer_context_modif(const e1ap_bearer_setup_req_t *req) { abort(); }
+void e1_bearer_context_modif(const e1ap_bearer_mod_req_t *req) { abort(); }
 void e1_bearer_release_cmd(const e1ap_bearer_release_cmd_t *cmd) { abort(); }
 
 int8_t nr_rrc_RA_succeeded(const module_id_t mod_id, const uint8_t gNB_index) {
@@ -212,7 +209,6 @@ int main(int argc, char *argv[])
   double effRate;
   double effTP;
   float eff_tp_check = 100;
-  int ldpc_offload_flag = 0;
   uint8_t max_rounds = 4;
   int chest_type[2] = {0};
   int enable_ptrs = 0;
@@ -251,7 +247,7 @@ int main(int argc, char *argv[])
   InitSinLUT();
 
   int c;
-  while ((c = getopt(argc, argv, "--:O:a:b:c:d:ef:g:h:i:k:m:n:op:q:r:s:t:u:v:w:y:z:A:C:F:G:H:I:M:N:PR:S:T:U:L:ZW:E:X:")) != -1) {
+  while ((c = getopt(argc, argv, "--:O:a:b:c:d:ef:g:h:i:k:m:n:p:q:r:s:t:u:v:w:y:z:A:C:F:G:H:I:M:N:PR:S:T:U:L:ZW:E:X:")) != -1) {
 
     /* ignore long options starting with '--', option '-O' and their arguments that are handled by configmodule */
     /* with this opstring getopt returns 1 for non-option arguments, refer to 'man 3 getopt' */
@@ -362,10 +358,6 @@ int main(int argc, char *argv[])
 
     case 'n':
       n_trials = atoi(optarg);
-      break;
-
-    case 'o':
-      ldpc_offload_flag = 1;
       break;
 
     case 'p':
@@ -531,7 +523,6 @@ int main(int argc, char *argv[])
       printf("-k 3/4 sampling\n");
       printf("-m MCS value\n");
       printf("-n Number of trials to simulate\n");
-      printf("-o ldpc offload flag\n");
       printf("-p Use extended prefix mode\n");
       printf("-q MCS table\n");
       printf("-r Number of allocated resource blocks for PUSCH\n");
@@ -608,11 +599,11 @@ int main(int argc, char *argv[])
   gNB->msgDataTx = msgDataTx;
   //gNB_config = &gNB->gNB_config;
 
-  //memset((void *)&gNB->UL_INFO,0,sizeof(gNB->UL_INFO));
-  gNB->UL_INFO.rx_ind.pdu_list = (nfapi_nr_rx_data_pdu_t *)malloc(NB_UE_INST*sizeof(nfapi_nr_rx_data_pdu_t));
-  gNB->UL_INFO.crc_ind.crc_list = (nfapi_nr_crc_t *)malloc(NB_UE_INST*sizeof(nfapi_nr_crc_t));
-  gNB->UL_INFO.rx_ind.number_of_pdus = 0;
-  gNB->UL_INFO.crc_ind.number_crcs = 0;
+  NR_UL_IND_t UL_INFO = {0};
+  UL_INFO.crc_ind.crc_list = UL_INFO.crc_pdu_list;
+  UL_INFO.rx_ind.pdu_list = UL_INFO.rx_pdu_list;
+  UL_INFO.rx_ind.number_of_pdus = 0;
+  UL_INFO.crc_ind.number_crcs = 0;
   gNB->max_ldpc_iterations = max_ldpc_iterations;
   gNB->pusch_thres = -20;
   frame_parms = &gNB->frame_parms; //to be initialized I suppose (maybe not necessary for PBCH)
@@ -634,6 +625,15 @@ int main(int argc, char *argv[])
   uint64_t ssb_bitmap;
   fill_scc_sim(scc, &ssb_bitmap, N_RB_DL, N_RB_DL, mu, mu);
   fix_scc(scc,ssb_bitmap);
+
+  frame_structure_t frame_structure = {0};
+  frame_type_t frame_type = TDD;
+  config_frame_structure(mu,
+                         scc->tdd_UL_DL_ConfigurationCommon,
+                         get_tdd_period_idx(scc->tdd_UL_DL_ConfigurationCommon),
+                         frame_type,
+                         &frame_structure);
+  AssertFatal(is_ul_slot(slot, &frame_structure), "The slot selected is not UL. Can't run ULSIM\n");
 
   // TODO do a UECAP for phy-sim
   const nr_mac_config_t conf = {.pdsch_AntennaPorts = {.N1 = 1, .N2 = 1, .XP = 1},
@@ -682,7 +682,6 @@ int main(int argc, char *argv[])
   cfg->carrier_config.num_rx_ant.value = n_rx;
 
 //  nr_phy_config_request_sim(gNB,N_RB_DL,N_RB_DL,mu,0,0x01);
-  gNB->ldpc_offload_flag = ldpc_offload_flag;
   gNB->chest_freq = chest_type[0];
   gNB->chest_time = chest_type[1];
 
@@ -729,6 +728,7 @@ int main(int argc, char *argv[])
   memcpy(&UE->frame_parms, frame_parms, sizeof(NR_DL_FRAME_PARMS));
   UE->frame_parms.nb_antennas_tx = n_tx;
   UE->frame_parms.nb_antennas_rx = 0;
+  UE->nrLDPC_coding_interface = gNB->nrLDPC_coding_interface;
 
   if (init_nr_ue_signal(UE, 1) != 0) {
     printf("Error at UE NR initialisation\n");
@@ -741,7 +741,7 @@ int main(int argc, char *argv[])
   nr_l2_init_ue(1);
   NR_UE_MAC_INST_t* UE_mac = get_mac_inst(0);
 
-  ue_init_config_request(UE_mac, mu);
+  ue_init_config_request(UE_mac, get_slots_per_frame_from_scs(mu));
   
   UE->if_inst = nr_ue_if_module_init(0);
   UE->if_inst->scheduled_response = nr_ue_scheduled_response;
@@ -750,6 +750,8 @@ int main(int argc, char *argv[])
   UE->if_inst->ul_indication = nr_ue_ul_indication;
   
   UE_mac->if_module = nr_ue_if_module_init(0);
+
+  initFloatingCoresTpool(threadCnt, &nrUE_params.Tpool, false, "UE-tpool");
 
   nr_ue_phy_config_request(&UE_mac->phy_config);
 
@@ -1260,9 +1262,9 @@ int main(int argc, char *argv[])
         //----------------------------------------------------------
         //------------------- gNB phy procedures -------------------
         //----------------------------------------------------------
-        gNB->UL_INFO.rx_ind.number_of_pdus = 0;
-        gNB->UL_INFO.crc_ind.number_crcs = 0;
-        gNB->UL_INFO.srs_ind.number_of_pdus = 0;
+        UL_INFO.rx_ind.number_of_pdus = 0;
+        UL_INFO.crc_ind.number_crcs = 0;
+        UL_INFO.srs_ind.number_of_pdus = 0;
 
         for(uint8_t symbol = 0; symbol < (gNB->frame_parms.Ncp == EXTENDED ? 12 : 14); symbol++) {
           for (int aa = 0; aa < gNB->frame_parms.nb_antennas_rx; aa++)
@@ -1285,7 +1287,7 @@ int main(int argc, char *argv[])
                                gNB->frame_parms.Ncp == EXTENDED ? 12 : 14);
         }
 
-        ul_proc_error = phy_procedures_gNB_uespec_RX(gNB, frame, slot);
+        ul_proc_error = phy_procedures_gNB_uespec_RX(gNB, frame, slot, &UL_INFO);
 
         if (n_trials == 1 && round == 0) {
           LOG_M("rxsig0.m", "rx0", &rxdata[0][slot_offset], slot_length, 1, 1);
@@ -1596,8 +1598,8 @@ int main(int argc, char *argv[])
           num_dmrs_cdm_grps_no_data);
 
   free_MIB_NR(mib);
-  if (gNB->ldpc_offload_flag)
-    free_LDPClib(&ldpc_interface_offload);
+
+  free_nrLDPC_coding_interface(&gNB->nrLDPC_coding_interface);
 
   if (output_fd)
     fclose(output_fd);

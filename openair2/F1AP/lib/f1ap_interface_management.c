@@ -32,6 +32,341 @@
 #include "f1ap_messages_types.h"
 #include "f1ap_lib_extern.h"
 
+F1AP_UE_associatedLogicalF1_ConnectionItem_t encode_f1ap_ue_to_reset(const f1ap_ue_to_reset_t *to_reset)
+{
+  F1AP_UE_associatedLogicalF1_ConnectionItem_t conn_it = {0};
+
+  if (to_reset->gNB_CU_ue_id)
+    asn1cCallocOne(conn_it.gNB_CU_UE_F1AP_ID, *to_reset->gNB_CU_ue_id);
+  if (to_reset->gNB_DU_ue_id)
+    asn1cCallocOne(conn_it.gNB_DU_UE_F1AP_ID, *to_reset->gNB_DU_ue_id);
+
+  return conn_it;
+}
+
+f1ap_ue_to_reset_t decode_f1ap_ue_to_reset(const F1AP_UE_associatedLogicalF1_ConnectionItem_t *conn_it)
+{
+  f1ap_ue_to_reset_t to_reset = {0};
+  if (conn_it->gNB_CU_UE_F1AP_ID) {
+    to_reset.gNB_CU_ue_id = malloc_or_fail(sizeof(*to_reset.gNB_CU_ue_id));
+    *to_reset.gNB_CU_ue_id = *conn_it->gNB_CU_UE_F1AP_ID;
+  }
+  if (conn_it->gNB_DU_UE_F1AP_ID) {
+    to_reset.gNB_DU_ue_id = malloc_or_fail(sizeof(*to_reset.gNB_DU_ue_id));
+    *to_reset.gNB_DU_ue_id = *conn_it->gNB_DU_UE_F1AP_ID;
+  }
+  return to_reset;
+}
+
+void free_f1ap_ue_to_reset(const f1ap_ue_to_reset_t *to_reset)
+{
+  free(to_reset->gNB_CU_ue_id);
+  free(to_reset->gNB_DU_ue_id);
+}
+
+bool eq_f1ap_ue_to_reset(const f1ap_ue_to_reset_t *a, const f1ap_ue_to_reset_t *b)
+{
+  if ((!a->gNB_CU_ue_id) ^ (!b->gNB_CU_ue_id))
+    return false;
+  if (a->gNB_CU_ue_id)
+    _F1_EQ_CHECK_INT(*a->gNB_CU_ue_id, *b->gNB_CU_ue_id);
+  if ((!a->gNB_DU_ue_id) ^ (!b->gNB_DU_ue_id))
+    return false;
+  if (a->gNB_DU_ue_id)
+    _F1_EQ_CHECK_INT(*a->gNB_DU_ue_id, *b->gNB_DU_ue_id);
+  return true;
+}
+
+f1ap_ue_to_reset_t cp_f1ap_ue_to_reset(const f1ap_ue_to_reset_t *orig)
+{
+  f1ap_ue_to_reset_t cp = {0};
+  if (orig->gNB_CU_ue_id) {
+    cp.gNB_CU_ue_id = malloc_or_fail(sizeof(*cp.gNB_CU_ue_id));
+    *cp.gNB_CU_ue_id = *orig->gNB_CU_ue_id;
+  }
+  if (orig->gNB_DU_ue_id) {
+    cp.gNB_DU_ue_id = malloc_or_fail(sizeof(*cp.gNB_DU_ue_id));
+    *cp.gNB_DU_ue_id = *orig->gNB_DU_ue_id;
+  }
+  return cp;
+}
+
+/* @brief encode F1 Reset (9.2.1.1 in TS 38.473) */
+F1AP_F1AP_PDU_t *encode_f1ap_reset(const f1ap_reset_t *msg)
+{
+  F1AP_F1AP_PDU_t *pdu = calloc_or_fail(1, sizeof(*pdu));
+  /* Create Message Type */
+  pdu->present = F1AP_F1AP_PDU_PR_initiatingMessage;
+  asn1cCalloc(pdu->choice.initiatingMessage, initMsg);
+  initMsg->procedureCode = F1AP_ProcedureCode_id_Reset;
+  initMsg->criticality = F1AP_Criticality_reject;
+  initMsg->value.present = F1AP_InitiatingMessage__value_PR_Reset;
+  F1AP_Reset_t *reset = &initMsg->value.choice.Reset;
+
+  /* (M) Transaction ID */
+  asn1cSequenceAdd(reset->protocolIEs.list, F1AP_ResetIEs_t, ieC1);
+  ieC1->id = F1AP_ProtocolIE_ID_id_TransactionID;
+  ieC1->criticality = F1AP_Criticality_reject;
+  ieC1->value.present = F1AP_ResetIEs__value_PR_TransactionID;
+  ieC1->value.choice.TransactionID = msg->transaction_id;
+
+  /* (M) Cause */
+  asn1cSequenceAdd(reset->protocolIEs.list, F1AP_ResetIEs_t, ieC2);
+  ieC2->id = F1AP_ProtocolIE_ID_id_Cause;
+  ieC2->criticality = F1AP_Criticality_ignore;
+  ieC2->value.present = F1AP_ResetIEs__value_PR_Cause;
+  ieC2->value.choice.Cause = encode_f1ap_cause(msg->cause, msg->cause_value);
+
+  /* (M) Reset type */
+  asn1cSequenceAdd(reset->protocolIEs.list, F1AP_ResetIEs_t, ieC3);
+  ieC3->id = F1AP_ProtocolIE_ID_id_ResetType;
+  ieC3->criticality = F1AP_Criticality_reject;
+  ieC3->value.present = F1AP_ResetIEs__value_PR_ResetType;
+  if (msg->reset_type == F1AP_RESET_ALL) {
+    ieC3->value.choice.ResetType.present = F1AP_ResetType_PR_f1_Interface;
+    ieC3->value.choice.ResetType.choice.f1_Interface = F1AP_ResetAll_reset_all;
+    AssertFatal(msg->num_ue_to_reset == 0, "cannot have F1AP_RESET_ALL and %d UEs to reset\n", msg->num_ue_to_reset);
+  } else if (msg->reset_type == F1AP_RESET_PART_OF_F1_INTERFACE) {
+    F1AP_UE_associatedLogicalF1_ConnectionListRes_t *con_list = calloc_or_fail(1, sizeof(*con_list));
+    ieC3->value.choice.ResetType.present = F1AP_ResetType_PR_partOfF1_Interface;
+    ieC3->value.choice.ResetType.choice.partOfF1_Interface = con_list;
+    AssertFatal(msg->num_ue_to_reset > 0, "at least one UE to reset required\n");
+    for (int i = 0; i < msg->num_ue_to_reset; ++i) {
+      asn1cSequenceAdd(con_list->list, F1AP_UE_associatedLogicalF1_ConnectionItemRes_t, conn_it_res);
+      conn_it_res->id = F1AP_ProtocolIE_ID_id_UE_associatedLogicalF1_ConnectionItem;
+      conn_it_res->criticality = F1AP_Criticality_reject;
+      conn_it_res->value.present = F1AP_UE_associatedLogicalF1_ConnectionItemRes__value_PR_UE_associatedLogicalF1_ConnectionItem;
+      conn_it_res->value.choice.UE_associatedLogicalF1_ConnectionItem = encode_f1ap_ue_to_reset(&msg->ue_to_reset[i]);
+    }
+  } else {
+    AssertFatal(false, "illegal reset_type %d\n", msg->reset_type);
+  }
+
+  return pdu;
+}
+
+/* @brief decode F1 Reset (9.2.1.1 in TS 38.473) */
+bool decode_f1ap_reset(const F1AP_F1AP_PDU_t *pdu, f1ap_reset_t *out)
+{
+  _F1_EQ_CHECK_INT(pdu->present, F1AP_F1AP_PDU_PR_initiatingMessage);
+  AssertError(pdu->choice.initiatingMessage != NULL, return false, "pdu->choice.initiatingMessage is NULL");
+  _F1_EQ_CHECK_LONG(pdu->choice.initiatingMessage->procedureCode, F1AP_ProcedureCode_id_Reset);
+  _F1_EQ_CHECK_INT(pdu->choice.initiatingMessage->value.present, F1AP_InitiatingMessage__value_PR_Reset);
+
+  /* Check presence of mandatory IEs */
+  F1AP_Reset_t *in = &pdu->choice.initiatingMessage->value.choice.Reset;
+  F1AP_ResetIEs_t *ie;
+  F1AP_LIB_FIND_IE(F1AP_ResetIEs_t, ie, in, F1AP_ProtocolIE_ID_id_TransactionID, true);
+  F1AP_LIB_FIND_IE(F1AP_ResetIEs_t, ie, in, F1AP_ProtocolIE_ID_id_Cause, true);
+  F1AP_LIB_FIND_IE(F1AP_ResetIEs_t, ie, in, F1AP_ProtocolIE_ID_id_ResetType, true);
+
+  /* Loop over all IEs */
+  for (int i = 0; i < in->protocolIEs.list.count; i++) {
+    AssertError(in->protocolIEs.list.array[i] != NULL, return false, "in->protocolIEs.list.array[i] is NULL");
+    ie = in->protocolIEs.list.array[i];
+    switch (ie->id) {
+      case F1AP_ProtocolIE_ID_id_TransactionID:
+        // (M) Transaction ID
+        _F1_EQ_CHECK_INT(ie->value.present, F1AP_ResetIEs__value_PR_TransactionID);
+        out->transaction_id = ie->value.choice.TransactionID;
+        break;
+      case F1AP_ProtocolIE_ID_id_Cause:
+        // (M) Cause
+        _F1_EQ_CHECK_INT(ie->value.present, F1AP_ResetIEs__value_PR_Cause);
+        if (!decode_f1ap_cause(ie->value.choice.Cause, &out->cause, &out->cause_value)) {
+          PRINT_ERROR("could not decode F1AP Cause\n");
+          return false;
+        }
+        break;
+      case F1AP_ProtocolIE_ID_id_ResetType:
+        // (M) Reset type
+        _F1_EQ_CHECK_INT(ie->value.present, F1AP_ResetIEs__value_PR_ResetType);
+        if (ie->value.choice.ResetType.present == F1AP_ResetType_PR_f1_Interface) {
+          out->reset_type = F1AP_RESET_ALL;
+        } else if (ie->value.choice.ResetType.present == F1AP_ResetType_PR_partOfF1_Interface) {
+          out->reset_type = F1AP_RESET_PART_OF_F1_INTERFACE;
+          const F1AP_UE_associatedLogicalF1_ConnectionListRes_t *con_list = ie->value.choice.ResetType.choice.partOfF1_Interface;
+          AssertError(con_list->list.count > 0, return false, "no UEs for partially reset F1 interface\n");
+          out->num_ue_to_reset = con_list->list.count;
+          out->ue_to_reset = calloc_or_fail(out->num_ue_to_reset, sizeof(*out->ue_to_reset));
+          for (int i = 0; i < out->num_ue_to_reset; ++i) {
+            const F1AP_UE_associatedLogicalF1_ConnectionItemRes_t *it_res =
+                (const F1AP_UE_associatedLogicalF1_ConnectionItemRes_t *)con_list->list.array[i];
+            _F1_EQ_CHECK_LONG(it_res->id, F1AP_ProtocolIE_ID_id_UE_associatedLogicalF1_ConnectionItem);
+            _F1_EQ_CHECK_INT(it_res->value.present,
+                             F1AP_UE_associatedLogicalF1_ConnectionItemRes__value_PR_UE_associatedLogicalF1_ConnectionItem);
+            out->ue_to_reset[i] = decode_f1ap_ue_to_reset(&it_res->value.choice.UE_associatedLogicalF1_ConnectionItem);
+          }
+        } else {
+          PRINT_ERROR("unrecognized Reset type %d\n", ie->value.choice.ResetType.present);
+          return false;
+        }
+    }
+  }
+  return true;
+}
+
+void free_f1ap_reset(f1ap_reset_t *msg)
+{
+  DevAssert(msg->reset_type == F1AP_RESET_ALL || msg->reset_type == F1AP_RESET_PART_OF_F1_INTERFACE);
+  if (msg->reset_type == F1AP_RESET_ALL) {
+    DevAssert(msg->ue_to_reset == NULL);
+    return; /* nothing to be freed in this case */
+  }
+  for (int i = 0; i < msg->num_ue_to_reset; ++i)
+    free_f1ap_ue_to_reset(&msg->ue_to_reset[i]);
+  free(msg->ue_to_reset);
+}
+
+bool eq_f1ap_reset(const f1ap_reset_t *a, const f1ap_reset_t *b)
+{
+  _F1_EQ_CHECK_LONG(a->transaction_id, b->transaction_id);
+  _F1_EQ_CHECK_INT(a->cause, b->cause);
+  _F1_EQ_CHECK_LONG(a->cause_value, b->cause_value);
+  _F1_EQ_CHECK_INT(a->reset_type, b->reset_type);
+  if (a->reset_type == F1AP_RESET_PART_OF_F1_INTERFACE) {
+    _F1_EQ_CHECK_INT(a->num_ue_to_reset, b->num_ue_to_reset);
+    for (int i = 0; i < a->num_ue_to_reset; ++i)
+      if (!eq_f1ap_ue_to_reset(&a->ue_to_reset[i], &b->ue_to_reset[i]))
+        return false;
+  }
+  return true;
+}
+
+f1ap_reset_t cp_f1ap_reset(const f1ap_reset_t *orig)
+{
+  DevAssert(orig->reset_type == F1AP_RESET_ALL || orig->reset_type == F1AP_RESET_PART_OF_F1_INTERFACE);
+  f1ap_reset_t cp = {
+      .transaction_id = orig->transaction_id,
+      .cause = orig->cause,
+      .cause_value = orig->cause_value,
+      .reset_type = orig->reset_type,
+  };
+  if (orig->reset_type == F1AP_RESET_PART_OF_F1_INTERFACE) {
+    DevAssert(orig->num_ue_to_reset > 0);
+    cp.num_ue_to_reset = orig->num_ue_to_reset;
+    cp.ue_to_reset = calloc_or_fail(cp.num_ue_to_reset, sizeof(*cp.ue_to_reset));
+    for (int i = 0; i < cp.num_ue_to_reset; ++i)
+      cp.ue_to_reset[i] = cp_f1ap_ue_to_reset(&orig->ue_to_reset[i]);
+  }
+  return cp;
+}
+
+/* @brief encode F1 Reset Ack (9.2.1.2 in TS 38.473) */
+struct F1AP_F1AP_PDU *encode_f1ap_reset_ack(const f1ap_reset_ack_t *msg)
+{
+  F1AP_F1AP_PDU_t *pdu = calloc_or_fail(1, sizeof(*pdu));
+  /* Create Message Type */
+  pdu->present = F1AP_F1AP_PDU_PR_successfulOutcome;
+  asn1cCalloc(pdu->choice.successfulOutcome, so);
+  so->procedureCode = F1AP_ProcedureCode_id_Reset;
+  so->criticality = F1AP_Criticality_reject;
+  so->value.present = F1AP_SuccessfulOutcome__value_PR_ResetAcknowledge;
+  F1AP_ResetAcknowledge_t *reset_ack = &so->value.choice.ResetAcknowledge;
+
+  /* (M) Transaction ID */
+  asn1cSequenceAdd(reset_ack->protocolIEs.list, F1AP_ResetAcknowledgeIEs_t, ieC1);
+  ieC1->id = F1AP_ProtocolIE_ID_id_TransactionID;
+  ieC1->criticality = F1AP_Criticality_reject;
+  ieC1->value.present = F1AP_ResetAcknowledgeIEs__value_PR_TransactionID;
+  ieC1->value.choice.TransactionID = msg->transaction_id;
+
+  /* TODO criticality diagnostics */
+
+  /* 0:N UEs to reset */
+  if (msg->num_ue_to_reset == 0)
+    return pdu; /* no UEs to encode */
+
+  asn1cSequenceAdd(reset_ack->protocolIEs.list, F1AP_ResetAcknowledgeIEs_t, ieC2);
+  ieC2->id = F1AP_ProtocolIE_ID_id_UE_associatedLogicalF1_ConnectionListResAck;
+  ieC2->criticality = F1AP_Criticality_ignore;
+  ieC2->value.present = F1AP_ResetAcknowledgeIEs__value_PR_UE_associatedLogicalF1_ConnectionListResAck;
+  F1AP_UE_associatedLogicalF1_ConnectionListResAck_t *ue_to_reset = &ieC2->value.choice.UE_associatedLogicalF1_ConnectionListResAck;
+  for (int i = 0; i < msg->num_ue_to_reset; ++i) {
+    asn1cSequenceAdd(ue_to_reset->list, F1AP_UE_associatedLogicalF1_ConnectionItemResAck_t, conn_it_res);
+    conn_it_res->id = F1AP_ProtocolIE_ID_id_UE_associatedLogicalF1_ConnectionItem;
+    conn_it_res->criticality = F1AP_Criticality_ignore;
+    conn_it_res->value.present = F1AP_UE_associatedLogicalF1_ConnectionItemResAck__value_PR_UE_associatedLogicalF1_ConnectionItem;
+    conn_it_res->value.choice.UE_associatedLogicalF1_ConnectionItem = encode_f1ap_ue_to_reset(&msg->ue_to_reset[i]);
+  }
+  return pdu;
+}
+
+/* @brief decode F1 Reset Ack (9.2.1.2 in TS 38.473) */
+bool decode_f1ap_reset_ack(const struct F1AP_F1AP_PDU *pdu, f1ap_reset_ack_t *out)
+{
+  _F1_EQ_CHECK_INT(pdu->present, F1AP_F1AP_PDU_PR_successfulOutcome);
+  AssertError(pdu->choice.successfulOutcome != NULL, return false, "pdu->choice.initiatingMessage is NULL");
+  _F1_EQ_CHECK_LONG(pdu->choice.successfulOutcome->procedureCode, F1AP_ProcedureCode_id_Reset);
+  _F1_EQ_CHECK_INT(pdu->choice.successfulOutcome->value.present, F1AP_SuccessfulOutcome__value_PR_ResetAcknowledge);
+
+  /* Check presence of mandatory IEs */
+  F1AP_ResetAcknowledge_t *in = &pdu->choice.successfulOutcome->value.choice.ResetAcknowledge;
+  F1AP_ResetAcknowledgeIEs_t *ie;
+  F1AP_LIB_FIND_IE(F1AP_ResetAcknowledgeIEs_t, ie, in, F1AP_ProtocolIE_ID_id_TransactionID, true);
+
+  /* Loop over all IEs */
+  for (int i = 0; i < in->protocolIEs.list.count; i++) {
+    AssertError(in->protocolIEs.list.array[i] != NULL, return false, "in->protocolIEs.list.array[i] is NULL");
+    ie = in->protocolIEs.list.array[i];
+    switch (ie->id) {
+      case F1AP_ProtocolIE_ID_id_TransactionID:
+        // (M) Transaction ID
+        _F1_EQ_CHECK_INT(ie->value.present, F1AP_ResetAcknowledgeIEs__value_PR_TransactionID);
+        out->transaction_id = ie->value.choice.TransactionID;
+        break;
+      case F1AP_ProtocolIE_ID_id_UE_associatedLogicalF1_ConnectionListResAck:
+        _F1_EQ_CHECK_INT(ie->value.present, F1AP_ResetAcknowledgeIEs__value_PR_UE_associatedLogicalF1_ConnectionListResAck);
+        {
+          const F1AP_UE_associatedLogicalF1_ConnectionListResAck_t *conn_list = &ie->value.choice.UE_associatedLogicalF1_ConnectionListResAck;
+          AssertError(conn_list->list.count > 0, return false, "no UEs for partially reset F1 interface\n");
+          out->num_ue_to_reset = conn_list->list.count;
+          out->ue_to_reset = calloc_or_fail(out->num_ue_to_reset, sizeof(*out->ue_to_reset));
+          for (int i = 0; i < out->num_ue_to_reset; ++i) {
+            const F1AP_UE_associatedLogicalF1_ConnectionItemResAck_t *it_res = (const F1AP_UE_associatedLogicalF1_ConnectionItemResAck_t *)conn_list->list.array[i];
+            _F1_EQ_CHECK_LONG(it_res->id, F1AP_ProtocolIE_ID_id_UE_associatedLogicalF1_ConnectionItem);
+            _F1_EQ_CHECK_INT(it_res->value.present, F1AP_UE_associatedLogicalF1_ConnectionItemResAck__value_PR_UE_associatedLogicalF1_ConnectionItem);
+            out->ue_to_reset[i] = decode_f1ap_ue_to_reset(&it_res->value.choice.UE_associatedLogicalF1_ConnectionItem);
+          }
+        }
+        break;
+      default:
+        AssertError(true, return false, "Reset Acknowledge: ProtocolIE id %ld not implemented, ignoring IE\n", ie->id);
+        break;
+    }
+  }
+  return true;
+}
+
+void free_f1ap_reset_ack(f1ap_reset_ack_t *msg)
+{
+  for (int i = 0; i < msg->num_ue_to_reset; ++i)
+    free_f1ap_ue_to_reset(&msg->ue_to_reset[i]);
+  free(msg->ue_to_reset);
+}
+
+bool eq_f1ap_reset_ack(const f1ap_reset_ack_t *a, const f1ap_reset_ack_t *b)
+{
+  _F1_EQ_CHECK_LONG(a->transaction_id, b->transaction_id);
+  _F1_EQ_CHECK_INT(a->num_ue_to_reset, b->num_ue_to_reset);
+  for (int i = 0; i < a->num_ue_to_reset; ++i) {
+    if (!eq_f1ap_ue_to_reset(&a->ue_to_reset[i], &b->ue_to_reset[i]))
+      return false;
+  }
+  return true;
+}
+
+f1ap_reset_ack_t cp_f1ap_reset_ack(const f1ap_reset_ack_t *orig)
+{
+  f1ap_reset_ack_t cp = {.transaction_id = orig->transaction_id, .num_ue_to_reset = orig->num_ue_to_reset};
+  if (cp.num_ue_to_reset > 0) {
+    cp.ue_to_reset = calloc_or_fail(cp.num_ue_to_reset, sizeof(*cp.ue_to_reset));
+    for (int i = 0; i < cp.num_ue_to_reset; ++i)
+      cp.ue_to_reset[i] = cp_f1ap_ue_to_reset(&orig->ue_to_reset[i]);
+  }
+  return cp;
+}
+
 static const int nrb_lut[29] = {11,  18,  24,  25,  31,  32,  38,  51,  52,  65,  66,  78,  79,  93, 106,
                                 107, 121, 132, 133, 135, 160, 162, 189, 216, 217, 245, 264, 270, 273};
 
@@ -67,6 +402,31 @@ static int read_slice_info(const F1AP_ServedPLMNs_Item_t *plmn, nssai_t *nssai, 
   }
 
   return ssl->list.count;
+}
+
+static F1AP_ProtocolExtensionContainer_10696P34_t *write_slice_info(int num_ssi, const nssai_t *nssai)
+{
+  if (num_ssi == 0)
+    return NULL;
+
+  F1AP_ProtocolExtensionContainer_10696P34_t *p = calloc_or_fail(1, sizeof(*p));
+  asn1cSequenceAdd(p->list, F1AP_ServedPLMNs_ItemExtIEs_t, served_plmns_itemExtIEs);
+  served_plmns_itemExtIEs->criticality = F1AP_Criticality_ignore;
+  served_plmns_itemExtIEs->id = F1AP_ProtocolIE_ID_id_TAISliceSupportList;
+  served_plmns_itemExtIEs->extensionValue.present = F1AP_ServedPLMNs_ItemExtIEs__extensionValue_PR_SliceSupportList;
+  F1AP_SliceSupportList_t *slice_support_list = &served_plmns_itemExtIEs->extensionValue.choice.SliceSupportList;
+
+  for (int s = 0; s < num_ssi; s++) {
+    asn1cSequenceAdd(slice_support_list->list, F1AP_SliceSupportItem_t, slice);
+    const nssai_t *n = &nssai[s];
+    INT8_TO_OCTET_STRING(n->sst, &slice->sNSSAI.sST);
+    if (n->sd != 0xffffff) {
+      asn1cCalloc(slice->sNSSAI.sD, tmp);
+      INT24_TO_OCTET_STRING(n->sd, tmp);
+    }
+  }
+
+  return p;
 }
 
 /**
@@ -133,6 +493,8 @@ static F1AP_Served_Cell_Information_t encode_served_cell_info(const f1ap_served_
   asn1cSequenceAdd(scell_info.servedPLMNs.list, F1AP_ServedPLMNs_Item_t, servedPLMN_item);
   // PLMN Identity (M)
   MCC_MNC_TO_PLMNID(c->plmn.mcc, c->plmn.mnc, c->plmn.mnc_digit_length, &servedPLMN_item->pLMN_Identity);
+  // NSSAIs (O)
+  servedPLMN_item->iE_Extensions = (struct F1AP_ProtocolExtensionContainer *)write_slice_info(c->num_ssi, c->nssai);
   // NR-Mode-Info (M)
   F1AP_NR_Mode_Info_t *nR_Mode_Info = &scell_info.nR_Mode_Info;
   if (c->mode == F1AP_MODE_FDD) { // FDD Info
@@ -173,7 +535,7 @@ static bool decode_served_cell_info(const F1AP_Served_Cell_Information_t *in, f1
     OCTET_STRING_TO_INT24(in->fiveGS_TAC, *info->tac);
   }
   // NR CGI (M)
-  TBCD_TO_MCC_MNC(&(in->nRCGI.pLMN_Identity), info->plmn.mcc, info->plmn.mnc, info->plmn.mnc_digit_length);
+  PLMNID_TO_MCC_MNC(&(in->nRCGI.pLMN_Identity), info->plmn.mcc, info->plmn.mnc, info->plmn.mnc_digit_length);
   // NR Cell Identity (M)
   BIT_STRING_TO_NR_CELL_IDENTITY(&in->nRCGI.nRCellIdentity, info->nr_cellid);
   // NR PCI (M)
@@ -310,7 +672,7 @@ static bool decode_cells_to_activate(served_cells_to_activate_t *out, const F1AP
               "in->value.present != F1AP_Cells_to_be_Activated_List_ItemIEs__value_PR_Cells_to_be_Activated_List_Item\n");
   const F1AP_Cells_to_be_Activated_List_Item_t *cell = &in->value.choice.Cells_to_be_Activated_List_Item;
   // NR CGI (M)
-  TBCD_TO_MCC_MNC(&cell->nRCGI.pLMN_Identity, out->plmn.mcc, out->plmn.mnc, out->plmn.mnc_digit_length);
+  PLMNID_TO_MCC_MNC(&cell->nRCGI.pLMN_Identity, out->plmn.mcc, out->plmn.mnc, out->plmn.mnc_digit_length);
   BIT_STRING_TO_NR_CELL_IDENTITY(&cell->nRCGI.nRCellIdentity, out->nr_cellid);
   // NR PCI (O)
   if (cell->nRPCI != NULL)
@@ -534,20 +896,56 @@ bool decode_f1ap_setup_request(const F1AP_F1AP_PDU_t *pdu, f1ap_setup_req_t *out
   return true;
 }
 
-void copy_f1ap_served_cell_info(f1ap_served_cell_info_t *dest, const f1ap_served_cell_info_t *src)
+f1ap_served_cell_info_t copy_f1ap_served_cell_info(const f1ap_served_cell_info_t *src)
 {
-  // shallow copy
-  *dest = *src;
-  // tac
+  f1ap_served_cell_info_t dst = {
+    .plmn = src->plmn,
+    .nr_cellid = src->nr_cellid,
+    .nr_pci = src->nr_pci,
+    .num_ssi = src->num_ssi,
+    .mode = src->mode,
+  };
+
+  for (int i = 0; i < src->num_ssi; ++i)
+    dst.nssai[i] = src->nssai[i];
+
+  if (src->mode == F1AP_MODE_TDD)
+    dst.tdd = src->tdd;
+  else
+    dst.fdd = src->fdd;
+
   if (src->tac) {
-    dest->tac = malloc_or_fail(sizeof(*dest->tac));
-    *dest->tac = *src->tac;
+    dst.tac = malloc_or_fail(sizeof(*dst.tac));
+    *dst.tac = *src->tac;
   }
-  // measurement timing config
-  if (src->measurement_timing_config_len) {
-    dest->measurement_timing_config = calloc_or_fail(src->measurement_timing_config_len, sizeof(*dest->measurement_timing_config));
-    memcpy(dest->measurement_timing_config, src->measurement_timing_config, src->measurement_timing_config_len);
+
+  if (src->measurement_timing_config_len > 0) {
+    dst.measurement_timing_config_len = src->measurement_timing_config_len;
+    dst.measurement_timing_config = calloc_or_fail(src->measurement_timing_config_len, sizeof(*dst.measurement_timing_config));
+    memcpy(dst.measurement_timing_config, src->measurement_timing_config, src->measurement_timing_config_len);
   }
+  return dst;
+}
+
+static f1ap_gnb_du_system_info_t *copy_f1ap_gnb_du_system_info(const f1ap_gnb_du_system_info_t *src)
+{
+  if (!src)
+    return NULL;
+
+  f1ap_gnb_du_system_info_t *dst = calloc_or_fail(1, sizeof(*dst));
+  if (src->mib_length > 0) {
+    dst->mib_length = src->mib_length;
+    dst->mib = calloc_or_fail(src->mib_length, sizeof(*src->mib));
+    memcpy(dst->mib, src->mib, dst->mib_length);
+  }
+
+  if (src->sib1_length > 0) {
+    dst->sib1_length = src->sib1_length;
+    dst->sib1 = calloc_or_fail(src->sib1_length, sizeof(*dst->sib1));
+    memcpy(dst->sib1, src->sib1, dst->sib1_length);
+  }
+
+  return dst;
 }
 
 /**
@@ -567,25 +965,9 @@ f1ap_setup_req_t cp_f1ap_setup_request(const f1ap_setup_req_t *msg)
   cp.num_cells_available = msg->num_cells_available;
   for (int n = 0; n < msg->num_cells_available; n++) {
     /* cell.info */
-    f1ap_served_cell_info_t *sci = &cp.cell[n].info;
-    const f1ap_served_cell_info_t *msg_sci = &msg->cell[n].info;
-    copy_f1ap_served_cell_info(sci, msg_sci);
+    cp.cell[n].info = copy_f1ap_served_cell_info(&msg->cell[n].info);
     /* cell.sys_info */
-    if (msg->cell[n].sys_info) {
-      f1ap_gnb_du_system_info_t *orig_sys_info = msg->cell[n].sys_info;
-      f1ap_gnb_du_system_info_t *copy_sys_info = calloc_or_fail(1, sizeof(*copy_sys_info));
-      cp.cell[n].sys_info = copy_sys_info;
-      if (orig_sys_info->mib_length > 0) {
-        copy_sys_info->mib = calloc_or_fail(orig_sys_info->mib_length, sizeof(*copy_sys_info->mib));
-        copy_sys_info->mib_length = orig_sys_info->mib_length;
-        memcpy(copy_sys_info->mib, orig_sys_info->mib, copy_sys_info->mib_length);
-      }
-      if (orig_sys_info->sib1_length > 0) {
-        copy_sys_info->sib1 = calloc_or_fail(orig_sys_info->sib1_length, sizeof(*copy_sys_info->sib1));
-        copy_sys_info->sib1_length = orig_sys_info->sib1_length;
-        memcpy(copy_sys_info->sib1, orig_sys_info->sib1, copy_sys_info->sib1_length);
-      }
-    }
+    cp.cell[n].sys_info = copy_f1ap_gnb_du_system_info(msg->cell[n].sys_info);
   }
   for (int i = 0; i < sizeofArray(msg->rrc_ver); i++)
     cp.rrc_ver[i] = msg->rrc_ver[i];
@@ -1002,7 +1384,6 @@ F1AP_F1AP_PDU_t *encode_f1ap_du_configuration_update(const f1ap_gnb_du_configura
   /* mandatory */
   /* c2. Served_Cells_To_Add */
   if (msg->num_cells_to_add > 0) {
-    AssertFatal(false, "code for adding cells not tested\n");
     asn1cSequenceAdd(out->protocolIEs.list, F1AP_GNBDUConfigurationUpdateIEs_t, ie2);
     ie2->id = F1AP_ProtocolIE_ID_id_Served_Cells_To_Add_List;
     ie2->criticality = F1AP_Criticality_reject;
@@ -1060,7 +1441,6 @@ F1AP_F1AP_PDU_t *encode_f1ap_du_configuration_update(const f1ap_gnb_du_configura
     ie4->id = F1AP_ProtocolIE_ID_id_Served_Cells_To_Delete_List;
     ie4->criticality = F1AP_Criticality_reject;
     ie4->value.present = F1AP_GNBDUConfigurationUpdateIEs__value_PR_Served_Cells_To_Delete_List;
-    AssertFatal(msg->num_cells_to_delete == 0, "code for deleting cells not tested\n");
     for (int i = 0; i < msg->num_cells_to_delete; i++) {
       asn1cSequenceAdd(ie4->value.choice.Served_Cells_To_Delete_List.list,
                        F1AP_Served_Cells_To_Delete_ItemIEs_t,
@@ -1114,8 +1494,8 @@ bool decode_f1ap_du_configuration_update(const F1AP_F1AP_PDU_t *pdu, f1ap_gnb_du
       } break;
       case F1AP_ProtocolIE_ID_id_Served_Cells_To_Add_List: {
         /* Served Cells To Add List */
-        AssertError(out->num_cells_to_add > 0, return false, "at least 1 cell to add shall to be present");
         out->num_cells_to_add = ie->value.choice.Served_Cells_To_Add_List.list.count;
+        AssertError(out->num_cells_to_add > 0, return false, "at least 1 cell to add shall to be present");
         for (int i = 0; i < out->num_cells_to_add; i++) {
           F1AP_Served_Cells_To_Add_Item_t *served_cells_item =
               &((F1AP_Served_Cells_To_Add_ItemIEs_t *)ie->value.choice.Served_Cells_To_Add_List.list.array[i])
@@ -1142,7 +1522,7 @@ bool decode_f1ap_du_configuration_update(const F1AP_F1AP_PDU_t *pdu, f1ap_gnb_du
           /* Old NR CGI (M) */
           F1AP_NRCGI_t *oldNRCGI = &served_cells_item->oldNRCGI;
           f1ap_plmn_t *old_plmn = &out->cell_to_modify[i].old_plmn;
-          TBCD_TO_MCC_MNC(&(oldNRCGI->pLMN_Identity), old_plmn->mcc, old_plmn->mnc, old_plmn->mnc_digit_length);
+          PLMNID_TO_MCC_MNC(&oldNRCGI->pLMN_Identity, old_plmn->mcc, old_plmn->mnc, old_plmn->mnc_digit_length);
           /* Old NR CGI Cell ID */
           BIT_STRING_TO_NR_CELL_IDENTITY(&oldNRCGI->nRCellIdentity, out->cell_to_modify[i].old_nr_cellid);
           /* Served Cell Information (M) */
@@ -1166,7 +1546,7 @@ bool decode_f1ap_du_configuration_update(const F1AP_F1AP_PDU_t *pdu, f1ap_gnb_du
           F1AP_NRCGI_t *oldNRCGI = &served_cells_item->oldNRCGI;
           f1ap_plmn_t *plmn = &out->cell_to_delete[i].plmn;
           /* Old NR CGI (M) */
-          TBCD_TO_MCC_MNC(&(oldNRCGI->pLMN_Identity), plmn->mcc, plmn->mnc, plmn->mnc_digit_length);
+          PLMNID_TO_MCC_MNC(&(oldNRCGI->pLMN_Identity), plmn->mcc, plmn->mnc, plmn->mnc_digit_length);
           // NR cellID
           BIT_STRING_TO_NR_CELL_IDENTITY(&oldNRCGI->nRCellIdentity, out->cell_to_delete[i].nr_cellid);
         }
@@ -1216,10 +1596,8 @@ bool eq_f1ap_du_configuration_update(const f1ap_gnb_du_configuration_update_t *a
   for (int i = 0; i < a->num_cells_to_add; i++) {
     if (!eq_f1ap_cell_info(&a->cell_to_add[i].info, &b->cell_to_add[i].info))
       return false;
-    if (a->cell_to_add[i].sys_info && b->cell_to_add[i].sys_info) {
-      if (!eq_f1ap_sys_info(a->cell_to_add[i].sys_info, b->cell_to_add[i].sys_info))
-        return false;
-    }
+    if (!eq_f1ap_sys_info(a->cell_to_add[i].sys_info, b->cell_to_add[i].sys_info))
+      return false;
   }
   /* to delete */
   _F1_EQ_CHECK_INT(a->num_cells_to_delete, b->num_cells_to_delete);
@@ -1231,12 +1609,13 @@ bool eq_f1ap_du_configuration_update(const f1ap_gnb_du_configuration_update_t *a
   /* to modify */
   _F1_EQ_CHECK_INT(a->num_cells_to_modify, b->num_cells_to_modify);
   for (int i = 0; i < a->num_cells_to_modify; i++) {
+    if (!eq_f1ap_plmn(&a->cell_to_modify[i].old_plmn, &b->cell_to_modify[i].old_plmn))
+      return false;
+    _F1_EQ_CHECK_LONG(a->cell_to_modify[i].old_nr_cellid, b->cell_to_modify[i].old_nr_cellid);
     if (!eq_f1ap_cell_info(&a->cell_to_modify[i].info, &b->cell_to_modify[i].info))
       return false;
-    if (a->cell_to_modify[i].sys_info && b->cell_to_modify[i].sys_info) {
-      if (!eq_f1ap_sys_info(a->cell_to_modify[i].sys_info, b->cell_to_modify[i].sys_info))
-        return false;
-    }
+    if (!eq_f1ap_sys_info(a->cell_to_modify[i].sys_info, b->cell_to_modify[i].sys_info))
+      return false;
   }
   return true;
 }
@@ -1256,6 +1635,10 @@ f1ap_gnb_du_configuration_update_t cp_f1ap_du_configuration_update(const f1ap_gn
   cp.transaction_id = msg->transaction_id;
   /* to add */
   cp.num_cells_to_add = msg->num_cells_to_add;
+  for (int i = 0; i < cp.num_cells_to_add; ++i) {
+    cp.cell_to_add[i].info = copy_f1ap_served_cell_info(&msg->cell_to_add[i].info);
+    cp.cell_to_add[i].sys_info = copy_f1ap_gnb_du_system_info(msg->cell_to_add[i].sys_info);
+  }
   /* to delete */
   cp.num_cells_to_delete = msg->num_cells_to_delete;
   for (int i = 0; i < cp.num_cells_to_delete; i++) {
@@ -1265,31 +1648,10 @@ f1ap_gnb_du_configuration_update_t cp_f1ap_du_configuration_update(const f1ap_gn
   /* to modify */
   cp.num_cells_to_modify = msg->num_cells_to_modify;
   for (int i = 0; i < cp.num_cells_to_modify; i++) {
-    cp.cell_to_modify[i].info = msg->cell_to_modify[i].info;
-    f1ap_served_cell_info_t *info = &cp.cell_to_modify[i].info;
-    if (info->measurement_timing_config_len > 0) {
-      info->measurement_timing_config = malloc_or_fail(info->measurement_timing_config_len * sizeof(*info->measurement_timing_config));
-      for (int j = 0; j < info->measurement_timing_config_len; j++)
-        info->measurement_timing_config[j] = msg->cell_to_modify[i].info.measurement_timing_config[j];
-    }
-    /* TAC */
-    info->tac = calloc_or_fail(1, sizeof(*info->tac));
-    *info->tac = *msg->cell_to_modify[i].info.tac;
-    /* System information */
-    cp.cell_to_modify[i].sys_info = malloc_or_fail(sizeof(*cp.cell_to_modify[i].sys_info));
-    f1ap_gnb_du_system_info_t *sys_info = cp.cell_to_modify[i].sys_info;
-    if (msg->cell_to_modify[i].sys_info->mib_length > 0) {
-      sys_info->mib_length = msg->cell_to_modify[i].sys_info->mib_length;
-      sys_info->mib = calloc_or_fail(msg->cell_to_modify[i].sys_info->mib_length, sizeof(*sys_info->mib));
-      for (int j = 0; j < sys_info->mib_length; j++)
-        sys_info->mib[j] = msg->cell_to_modify[i].sys_info->mib[j];
-    }
-    if (msg->cell_to_modify[i].sys_info->sib1_length > 0) {
-      sys_info->sib1_length = msg->cell_to_modify[i].sys_info->sib1_length;
-      sys_info->sib1 = calloc_or_fail(msg->cell_to_modify[i].sys_info->sib1_length, sizeof(*sys_info->sib1));
-      for (int j = 0; j < sys_info->sib1_length; j++)
-        sys_info->sib1[j] = msg->cell_to_modify[i].sys_info->sib1[j];
-    }
+    cp.cell_to_modify[i].old_plmn = msg->cell_to_modify[i].old_plmn;
+    cp.cell_to_modify[i].old_nr_cellid = msg->cell_to_modify[i].old_nr_cellid;
+    cp.cell_to_modify[i].info = copy_f1ap_served_cell_info(&msg->cell_to_modify[i].info);
+    cp.cell_to_modify[i].sys_info = copy_f1ap_gnb_du_system_info(msg->cell_to_modify[i].sys_info);
   }
   return cp;
 }
@@ -1521,7 +1883,7 @@ bool decode_f1ap_cu_configuration_update_acknowledge(const F1AP_F1AP_PDU_t *pdu,
           const F1AP_Cells_Failed_to_be_Activated_List_Item_t *item = &itemIE->value.choice.Cells_Failed_to_be_Activated_List_Item;
           // NR CGI (M)
           f1ap_plmn_t *plmn = &out->cells_failed_to_be_activated[j].plmn;
-          TBCD_TO_MCC_MNC(&(item->nRCGI.pLMN_Identity), plmn->mcc, plmn->mnc, plmn->mnc_digit_length);
+          PLMNID_TO_MCC_MNC(&(item->nRCGI.pLMN_Identity), plmn->mcc, plmn->mnc, plmn->mnc_digit_length);
           BIT_STRING_TO_NR_CELL_IDENTITY(&item->nRCGI.nRCellIdentity, out->cells_failed_to_be_activated[j].nr_cellid);
           // Cause (M)
           switch (item->cause.present) {

@@ -30,8 +30,10 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include "E1AP/lib/e1ap_bearer_context_management.h"
-#include "E1AP/lib/e1ap_lib_includes.h"
+#include "common/utils/utils.h"
+#include "e1ap_bearer_context_management.h"
+#include "e1ap_interface_management.h"
+#include "e1ap_lib_includes.h"
 #include "common/utils/assertions.h"
 
 void exit_function(const char *file, const char *function, const int line, const char *s, const int assert)
@@ -68,6 +70,14 @@ static void e1ap_msg_free(E1AP_E1AP_PDU_t *pdu)
   ASN_STRUCT_FREE(asn_DEF_E1AP_E1AP_PDU, pdu);
 }
 
+static UP_TL_information_t create_up_tl_info(void)
+{
+  UP_TL_information_t tl_info;
+  tl_info.tlAddress = htonl(0xC0A90001); // 192.169.0.1
+  tl_info.teId = 0x2345;
+  return tl_info;
+}
+
 /**
  * @brief Test E1AP Bearer Context Setup Request encoding/decoding
  */
@@ -75,7 +85,7 @@ static void test_bearer_context_setup_request(void)
 {
   bearer_context_pdcp_config_t pdcp = {
     .discardTimer = E1AP_DiscardTimer_ms10,
-    .pDCP_Reestablishment = E1AP_PDCP_Reestablishment_true,
+    .pDCP_Reestablishment = true,
     .pDCP_SN_Size_DL = E1AP_PDCP_SN_Size_s_12,
     .pDCP_SN_Size_UL = E1AP_PDCP_SN_Size_s_12,
     .reorderingTimer = 10,
@@ -105,14 +115,13 @@ static void test_bearer_context_setup_request(void)
   // Step 1: Initialize the E1AP Bearer Context Setup Request
   e1ap_bearer_setup_req_t orig = {
       .gNB_cu_cp_ue_id = 1234,
-      .cipheringAlgorithm = 0x01,
-      .integrityProtectionAlgorithm = 0x01,
+      .secInfo.cipheringAlgorithm = 0x01,
+      .secInfo.integrityProtectionAlgorithm = 0x01,
       .ueDlAggMaxBitRate = 1000000000,
       .bearerContextStatus = 0,
       .servingPLMNid.mcc = 001,
       .servingPLMNid.mnc = 01,
       .servingPLMNid.mnc_digit_length = 0x02,
-      .activityNotificationLevel = ANL_PDU_SESSION,
       .numPDUSessions = 1,
       .pduSession[0].sessionId = 1,
       .pduSession[0].sessionType = E1AP_PDU_Session_Type_ipv4,
@@ -120,8 +129,7 @@ static void test_bearer_context_setup_request(void)
       .pduSession[0].nssai.sst = 0x01,
       .pduSession[0].securityIndication = security,
       .pduSession[0].numDRB2Setup = 1,
-      .pduSession[0].UP_TL_information.tlAddress = 167772161,
-      .pduSession[0].UP_TL_information.teId = 0x12345,
+      .pduSession[0].UP_TL_information = create_up_tl_info(),
       .pduSession[0].DRBnGRanList[0].id = 1,
       .pduSession[0].DRBnGRanList[0].sdap_config = sdap,
       .pduSession[0].DRBnGRanList[0].pdcp_config = pdcp,
@@ -131,8 +139,8 @@ static void test_bearer_context_setup_request(void)
       .pduSession[0].DRBnGRanList[0].numQosFlow2Setup = 1,
       .pduSession[0].DRBnGRanList[0].qosFlows[0] = qos,
   };
-  memset(orig.encryptionKey, 0xAB, sizeof(orig.encryptionKey));
-  memset(orig.integrityProtectionKey, 0xCD, sizeof(orig.integrityProtectionKey));
+  memset(orig.secInfo.encryptionKey, 0xAB, sizeof(orig.secInfo.encryptionKey));
+  memset(orig.secInfo.integrityProtectionKey, 0xCD, sizeof(orig.secInfo.integrityProtectionKey));
   // E1AP encode the original message
   E1AP_E1AP_PDU_t *enc = encode_E1_bearer_context_setup_request(&orig);
   // E1AP decode the encoded message
@@ -170,8 +178,7 @@ static void test_bearer_context_setup_response(void)
       .gNB_cu_up_ue_id = 5678,
       .numPDUSessions = 1,
       .pduSession[0].id = 1,
-      .pduSession[0].tlAddress = 167772161,
-      .pduSession[0].teId = 0x12345,
+      .pduSession[0].tl_info = create_up_tl_info(),
       .pduSession[0].numDRBSetup = 1,
       .pduSession[0].numDRBFailed = 0,
       .pduSession[0].DRBnGRanList[0].id = 1,
@@ -179,8 +186,7 @@ static void test_bearer_context_setup_response(void)
       .pduSession[0].DRBnGRanList[0].numQosFlowSetup = 1,
       .pduSession[0].DRBnGRanList[0].qosFlows[0].qfi = 1,
       .pduSession[0].DRBnGRanList[0].UpParamList[0].cell_group_id = MCG,
-      .pduSession[0].DRBnGRanList[0].UpParamList[0].teId = 0x34345,
-      .pduSession[0].DRBnGRanList[0].UpParamList[0].tlAddress = 167772161,
+      .pduSession[0].DRBnGRanList[0].UpParamList[0].tl_info = create_up_tl_info(),
   };
   // E1AP encode the original message
   E1AP_E1AP_PDU_t *enc = encode_E1_bearer_context_setup_response(&orig);
@@ -216,10 +222,247 @@ static void test_bearer_context_setup_response(void)
   free_e1ap_context_setup_response(&orig);
 }
 
+/**
+ * @brief Test CU-UP Setup Request encoding/decoding
+ */
+static void test_e1_cuup_setup_request(void)
+{
+  e1ap_setup_req_t orig = {.gNB_cu_up_id = 1234,
+                           .gNB_cu_up_name = strdup("OAI CU-UP"),
+                           .transac_id = 42,
+                           .supported_plmns = 1,
+                           .cn_support = cn_support_5GC,
+                           .plmn[0] = {.id = {.mcc = 001, .mnc = 01, .mnc_digit_length = 2},
+                                       .supported_slices = 1}};
+  orig.plmn[0].slice = malloc_or_fail(sizeof(*orig.plmn[0].slice));
+  orig.plmn[0].slice->sst = 0x01;
+  orig.plmn[0].slice->sd = 0x01;
+
+  E1AP_E1AP_PDU_t *encoded = encode_e1ap_cuup_setup_request(&orig);
+  E1AP_E1AP_PDU_t *decoded_msg = e1ap_encode_decode(encoded);
+  e1ap_msg_free(encoded);
+
+  e1ap_setup_req_t decoded = {0};
+  bool ret = decode_e1ap_cuup_setup_request(decoded_msg, &decoded);
+  AssertFatal(ret, "Failed to decode setup request");
+  e1ap_msg_free(decoded_msg);
+
+  ret = eq_e1ap_cuup_setup_request(&orig, &decoded);
+  AssertFatal(ret, "Decoded setup request doesn't match original");
+  free_e1ap_cuup_setup_request(&decoded);
+
+  e1ap_setup_req_t cp = cp_e1ap_cuup_setup_request(&orig);
+  ret = eq_e1ap_cuup_setup_request(&orig, &cp);
+  AssertFatal(ret, "eq_e1ap_cuup_setup_request(): copied message doesn't match\n");
+
+  free_e1ap_cuup_setup_request(&orig);
+  free_e1ap_cuup_setup_request(&cp);
+}
+
+/**
+ * @brief Test CU-UP Setup Response encoding/decoding
+ */
+static void test_e1_cuup_setup_response(void)
+{
+  e1ap_setup_resp_t orig = {.transac_id = 42,
+                            .gNB_cu_cp_name = strdup("OAI CU-CP"),
+                            .tnla_info = malloc(sizeof(tnl_address_info_t))};
+  orig.tnla_info->num_addresses_to_add = 1;
+  orig.tnla_info->num_addresses_to_remove = 1;
+  orig.tnla_info->addresses_to_add[0].num_gtp_tl_addresses = 1;
+  orig.tnla_info->addresses_to_add[0].ipsec_tl_address = 0xC0A80001;
+  orig.tnla_info->addresses_to_add[0].gtp_tl_addresses[0] = 0xC0A80002;
+  orig.tnla_info->num_addresses_to_remove = 1;
+  orig.tnla_info->addresses_to_remove[0].num_gtp_tl_addresses = 1;
+  orig.tnla_info->addresses_to_remove[0].ipsec_tl_address = 0xC0A80003;
+  orig.tnla_info->addresses_to_remove[0].gtp_tl_addresses[0] = 0xC0A80004;
+
+  E1AP_E1AP_PDU_t *encoded = encode_e1ap_cuup_setup_response(&orig);
+  E1AP_E1AP_PDU_t *decoded_msg = e1ap_encode_decode(encoded);
+  e1ap_msg_free(encoded);
+
+  e1ap_setup_resp_t decoded = {0};
+  bool ret = decode_e1ap_cuup_setup_response(decoded_msg, &decoded);
+  AssertFatal(ret, "Failed to decode setup response");
+  e1ap_msg_free(decoded_msg);
+
+  ret = eq_e1ap_cuup_setup_response(&orig, &decoded);
+  AssertFatal(ret, "Decoded setup response doesn't match original");
+  free_e1ap_cuup_setup_response(&decoded);
+
+  e1ap_setup_resp_t cp = cp_e1ap_cuup_setup_response(&orig);
+  ret = eq_e1ap_cuup_setup_response(&orig, &cp);
+  AssertFatal(ret, "eq_e1ap_cuup_setup_response(): copied message doesn't match\n");
+
+  free_e1ap_cuup_setup_response(&orig);
+  free_e1ap_cuup_setup_response(&cp);
+}
+
+// Test for E1AP CU-UP Setup Failure
+static void test_e1_cuup_setup_failure(void)
+{
+  e1ap_setup_fail_t orig = {.transac_id = 42,
+                            .cause.type = E1AP_CAUSE_RADIO_NETWORK,
+                            .cause.value = E1AP_RADIO_CAUSE_NORMAL_RELEASE,
+                            .time_to_wait = malloc_or_fail(sizeof(long)),
+                            .crit_diag = malloc_or_fail(sizeof(criticality_diagnostics_t))};
+  *orig.time_to_wait = 5;
+  orig.crit_diag->procedure_code = malloc_or_fail(sizeof(*orig.crit_diag->procedure_code));
+  *orig.crit_diag->procedure_code = 99;
+  orig.crit_diag->triggering_msg = malloc_or_fail(sizeof(*orig.crit_diag->triggering_msg));
+  *orig.crit_diag->triggering_msg = TRIGGERING_MSG_SUCCESSFUL_OUTCOME;
+  orig.crit_diag->procedure_criticality = malloc_or_fail(sizeof(*orig.crit_diag->procedure_criticality));
+  *orig.crit_diag->procedure_criticality = CRITICALITY_IGNORE;
+  orig.crit_diag->num_errors = 1;
+  orig.crit_diag->errors[0].ie_id = 66;
+  orig.crit_diag->errors[0].error_type = ERROR_TYPE_MISSING;
+  orig.crit_diag->errors[0].criticality = CRITICALITY_IGNORE;
+
+  E1AP_E1AP_PDU_t *encoded = encode_e1ap_cuup_setup_failure(&orig);
+  E1AP_E1AP_PDU_t *decoded_msg = e1ap_encode_decode(encoded);
+  e1ap_msg_free(encoded);
+
+  e1ap_setup_fail_t decoded = {0};
+  bool ret = decode_e1ap_cuup_setup_failure(decoded_msg, &decoded);
+  AssertFatal(ret, "Failed to decode setup failure");
+  e1ap_msg_free(decoded_msg);
+
+  ret = eq_e1ap_cuup_setup_failure(&orig, &decoded);
+  AssertFatal(ret, "Decoded setup failure doesn't match original");
+  free_e1ap_cuup_setup_failure(&decoded);
+
+  e1ap_setup_fail_t cp = cp_e1ap_cuup_setup_failure(&orig);
+  ret = eq_e1ap_cuup_setup_failure(&orig, &cp);
+  AssertFatal(ret, "eq_e1ap_cuup_setup_failure(): copied message doesn't match\n");
+
+  free_e1ap_cuup_setup_failure(&cp);
+  free_e1ap_cuup_setup_failure(&orig);
+}
+
+/**
+ * @brief Test E1AP Bearer Context Modification Request encoding/decoding
+ */
+static void test_bearer_context_modification_request(void)
+{
+  const bearer_context_sdap_config_t dummy_sdap_config = {
+      .defaultDRB = 0,
+      .sDAP_Header_DL = false,
+      .sDAP_Header_UL = false,
+  };
+
+  const bearer_context_pdcp_config_t dummy_pdcp_config = {
+      .discardTimer = E1AP_DiscardTimer_ms100,
+      .pDCP_Reestablishment = true,
+      .pDCP_SN_Size_DL = E1AP_PDCP_SN_Size_s_12,
+      .pDCP_SN_Size_UL = E1AP_PDCP_SN_Size_s_12,
+      .reorderingTimer = 5,
+      .rLC_Mode = E1AP_RLC_Mode_rlc_um_bidirectional,
+  };
+
+  const qos_flow_to_setup_t dummy_qos_flows = {
+      .qfi = 9,
+      .qos_params.alloc_reten_priority.preemption_capability = E1AP_Pre_emptionCapability_may_trigger_pre_emption,
+      .qos_params.alloc_reten_priority.preemption_vulnerability = E1AP_Pre_emptionVulnerability_pre_emptable,
+      .qos_params.alloc_reten_priority.priority_level = E1AP_PriorityLevel_no_priority,
+      .qos_params.qos_characteristics.non_dynamic.fiveqi = 9,
+  };
+
+  DRB_nGRAN_to_mod_t drb_to_mod = {
+    .numDlUpParam = 1,
+    .DlUpParamList[0].cell_group_id = MCG,
+    .DlUpParamList[0].tl_info = create_up_tl_info(),
+    .id = 1,
+    .pdcp_config = malloc_or_fail(sizeof(*drb_to_mod.pdcp_config)),
+    .pdcp_sn_status_requested = true,
+    .numQosFlow2Setup = 1,
+    .qosFlows[0] = dummy_qos_flows,
+  };
+  *drb_to_mod.pdcp_config = dummy_pdcp_config;
+
+  pdu_session_to_mod_t pdusession_mod_item = {
+      .sessionId = 1,
+      .numDRB2Modify = 1,
+      .DRBnGRanModList[0] = drb_to_mod,
+  };
+
+  DRB_nGRAN_to_setup_t drb_to_setup = {
+      .id = 1,
+      .cellGroupList[0] = MCG,
+      .numCellGroups = 1,
+      .pdcp_config = dummy_pdcp_config,
+      .sdap_config = dummy_sdap_config,
+      .numQosFlow2Setup = 1,
+      .qosFlows[0] = dummy_qos_flows,
+      .drb_inactivity_timer = malloc_or_fail(sizeof(*drb_to_setup.drb_inactivity_timer)),
+  };
+  *drb_to_setup.drb_inactivity_timer = 500;
+
+  pdu_session_to_setup_t pdusession_setup_item = {
+      .numDRB2Setup = 1,
+      .nssai.sd = 0x01,
+      .nssai.sst = 0x01,
+      .UP_TL_information.teId = 0x12345,
+      .UP_TL_information.tlAddress = 167772161,
+      .DRBnGRanList[0] = drb_to_setup,
+  };
+
+  // Initialize the Bearer Context Modification Request
+  e1ap_bearer_mod_req_t orig = {
+      .gNB_cu_cp_ue_id = 0x1234,
+      .gNB_cu_up_ue_id = 0x5678,
+      .bearerContextStatus = malloc_or_fail(sizeof(*orig.bearerContextStatus)),
+      .inactivityTimer = malloc_or_fail(sizeof(*orig.inactivityTimer)),
+      .numPDUSessions = 1,
+      .pduSession[0] = pdusession_setup_item,
+      .numPDUSessionsMod = 1,
+      .pduSessionMod[0] = pdusession_mod_item,
+  };
+  *orig.bearerContextStatus = BEARER_SUSPEND;
+  *orig.inactivityTimer = 1000;
+
+  // Encode the original message
+  E1AP_E1AP_PDU_t *enc = encode_E1_bearer_context_mod_request(&orig);
+
+  // Decode the encoded message
+  E1AP_E1AP_PDU_t *dec = e1ap_encode_decode(enc);
+
+  // Free the encoded message
+  e1ap_msg_free(enc);
+
+  // Decode the message into a new struct
+  e1ap_bearer_mod_req_t decoded = {0};
+  AssertFatal(decode_E1_bearer_context_mod_request(dec, &decoded), "decode_E1_bearer_context_mod_request(): could not decode message\n");
+
+  // Free the decoded E1AP message
+  e1ap_msg_free(dec);
+
+  // Compare the original and decoded structs
+  AssertFatal(eq_bearer_context_mod_request(&orig, &decoded), "eq_bearer_context_mod_request(): decoded message doesn't match\n");
+
+  // Free the memory for the decoded message
+  free_e1ap_context_mod_request(&decoded);
+
+  // Deep copy the original message
+  e1ap_bearer_mod_req_t cp = cp_bearer_context_mod_request(&orig);
+
+  // Verify the deep copy matches the original
+  AssertFatal(eq_bearer_context_mod_request(&orig, &cp), "eq_bearer_context_mod_request(): copied message doesn't match\n");
+
+  // Free the copied and original message
+  free_e1ap_context_mod_request(&cp);
+  free_e1ap_context_mod_request(&orig);
+}
+
 int main()
 {
   // E1 Bearer Context Setup
   test_bearer_context_setup_request();
   test_bearer_context_setup_response();
+  // E1 Interface Management
+  test_e1_cuup_setup_request();
+  test_e1_cuup_setup_response();
+  test_e1_cuup_setup_failure();
+  // E1 Bearer Context Modification Request
+  test_bearer_context_modification_request();
   return 0;
 }

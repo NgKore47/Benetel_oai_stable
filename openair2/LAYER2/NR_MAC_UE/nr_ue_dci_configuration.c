@@ -39,9 +39,7 @@
 #include "executables/softmodem-common.h"
 #include <stdio.h>
 
-void fill_dci_search_candidates(const NR_SearchSpace_t *ss,
-                                fapi_nr_dl_config_dci_dl_pdu_rel15_t *rel15,
-                                const uint32_t Y)
+void fill_dci_search_candidates(const NR_SearchSpace_t *ss, fapi_nr_dl_config_dci_dl_pdu_rel15_t *rel15, const uint32_t Y)
 {
   LOG_T(NR_MAC_DCI, "Filling search candidates for DCI\n");
 
@@ -320,6 +318,11 @@ void config_dci_pdu(NR_UE_MAC_INST_t *mac,
   if (ss->searchSpaceType->present == NR_SearchSpace__searchSpaceType_PR_ue_Specific)
     Y = get_Y(ss, slot, rel15->rnti);
   fill_dci_search_candidates(ss, rel15, Y);
+  // not scheduling DCI reception if there are no candidates
+  if (rel15->number_of_candidates == 0) {
+    LOG_E(NR_MAC, "No candidates in this DCI, not scheduling it");
+    return;
+  }
 
   #ifdef DEBUG_DCI
     for (int i = 0; i < rel15->num_dci_options; i++) {
@@ -515,7 +518,7 @@ void ue_dci_configuration(NR_UE_MAC_INST_t *mac, fapi_nr_dl_config_request_t *dl
   NR_BWP_Id_t dl_bwp_id = current_DL_BWP ? current_DL_BWP->bwp_id : 0;
   NR_BWP_PDCCH_t *pdcch_config = &mac->config_BWP_PDCCH[dl_bwp_id];
   int scs = current_DL_BWP ? current_DL_BWP->scs : get_softmodem_params()->numerology;
-  const int slots_per_frame = nr_slots_per_frame[scs];
+  const int slots_per_frame = get_slots_per_frame_from_scs(scs);
   if (mac->get_sib1) {
     int ssb_sc_offset_norm;
     if (mac->ssb_subcarrier_offset < 24 && mac->frequency_range == FR1)

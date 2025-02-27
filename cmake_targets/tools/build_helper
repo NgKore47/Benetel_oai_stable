@@ -131,6 +131,7 @@ check_supported_distribution() {
         "rocky9.2")    return 0 ;;
         "rocky9.3")    return 0 ;;
         "rocky9.4")    return 0 ;;
+        "rocky9.5")    return 0 ;;
     esac
     return 1
 }
@@ -225,7 +226,7 @@ compilations() {
     ret=$?
   } > $dlog/$logfile 2>&1
   # Print the errors and warnings for CI purposes
-  grep -E -A3 "warning:|error:" $dlog/$logfile || true
+  grep -E -A5 -B5 "warning:|error:| Error " $dlog/$logfile || true
   check_warnings "$dlog/$logfile"
   if [[ $ret -eq 0 ]]; then
      echo_success "$targets compiled"
@@ -673,8 +674,8 @@ install_simde_from_source(){
     if [[ -v SIMDE_VERSION ]]; then
       git checkout -f $SIMDE_VERSION
     else
-      # At time of writing, last working commit for OAI: 1a09d3bc
-      git checkout 1a09d3bc9de47c4d9a5daa23eb753d5322748201
+      # At time of writing, last working commit for OAI: c7f26b7
+      git checkout c7f26b73ba8e874b95c2cec2b497826ad2188f68
     fi
     # Showing which version is used
     git log -n1

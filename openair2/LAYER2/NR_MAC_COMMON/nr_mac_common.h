@@ -63,10 +63,16 @@ int16_t fill_dmrs_mask(const NR_PDSCH_Config_t *pdsch_Config,
                        int startSymbol,
                        mappingType_t mappingtype,
                        int length);
-
-bool is_nr_DL_slot(NR_TDD_UL_DL_ConfigCommon_t *tdd_UL_DL_ConfigurationCommon, slot_t slotP);
-
-bool is_nr_UL_slot(NR_TDD_UL_DL_ConfigCommon_t *tdd_UL_DL_ConfigurationCommon, slot_t slotP, frame_type_t frame_type);
+int get_slots_per_frame_from_scs(int scs);
+bool is_ul_slot(const slot_t slot, const frame_structure_t *fs);
+bool is_dl_slot(const slot_t slot, const frame_structure_t *fs);
+bool is_mixed_slot(const slot_t slot, const frame_structure_t *fs);
+int get_tdd_period_idx(NR_TDD_UL_DL_ConfigCommon_t *tdd);
+void config_frame_structure(int mu,
+                            NR_TDD_UL_DL_ConfigCommon_t *tdd_UL_DL_ConfigurationCommon,
+                            uint8_t tdd_period,
+                            uint8_t frame_type,
+                            frame_structure_t *fs);
 
 uint8_t compute_srs_resource_indicator(long *maxMIMO_Layers,
                                        NR_PUSCH_Config_t *pusch_Config,
@@ -79,6 +85,7 @@ uint8_t compute_precoding_information(NR_PUSCH_Config_t *pusch_Config,
                                       dci_field_t srs_resource_indicator,
                                       nr_srs_feedback_t *srs_feedback,
                                       const uint8_t *nrOfLayers,
+                                      int *tpmi,
                                       uint32_t *val);
 
 NR_PDSCH_TimeDomainResourceAllocationList_t *get_dl_tdalist(const NR_UE_DL_BWP_t *DL_BWP,

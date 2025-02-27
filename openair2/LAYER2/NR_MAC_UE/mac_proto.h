@@ -85,14 +85,10 @@ void nr_rrc_mac_config_req_mib(module_id_t module_id,
                                NR_MIB_t *mibP,
                                int sched_sib1);
 
-void nr_rrc_mac_config_req_sib1(module_id_t module_id,
-                                int cc_idP,
-                                NR_SI_SchedulingInfo_t *si_SchedulingInfo,
-                                NR_SI_SchedulingInfo_v1700_t *si_SchedulingInfo_v1700,
-                                NR_ServingCellConfigCommonSIB_t *scc);
+void nr_rrc_mac_config_req_sib1(module_id_t module_id, int cc_idP, NR_SIB1_t *sib1, bool can_start_ra);
 
-void nr_rrc_mac_config_req_sib19_r17(module_id_t module_id,
-                                     NR_SIB19_r17_t *sib19_r17);
+struct position; /* forward declaration */
+void nr_rrc_mac_config_other_sib(module_id_t module_id, NR_SIB19_r17_t *sib19_r17, bool can_start_ra);
 
 void nr_rrc_mac_config_req_reset(module_id_t module_id, NR_UE_MAC_reset_cause_t cause);
 
@@ -371,7 +367,7 @@ int8_t nr_ue_process_dci_freq_dom_resource_assignment(nfapi_nr_ue_pusch_pdu_t *p
 
 void build_ssb_to_ro_map(NR_UE_MAC_INST_t *mac);
 
-void ue_init_config_request(NR_UE_MAC_INST_t *mac, int scs);
+void ue_init_config_request(NR_UE_MAC_INST_t *mac, int slots_per_frame);
 
 fapi_nr_dl_config_request_t *get_dl_config_request(NR_UE_MAC_INST_t *mac, int slot);
 
@@ -380,7 +376,6 @@ void remove_ul_config_last_item(fapi_nr_ul_config_request_pdu_t *pdu);
 fapi_nr_ul_config_request_pdu_t *fapiLockIterator(fapi_nr_ul_config_request_t *ul_config, frame_t frame_tx, int slot_tx);
 
 void release_ul_config(fapi_nr_ul_config_request_pdu_t *pdu, bool clearIt);
-void clear_ul_config_request(NR_UE_MAC_INST_t *mac, int scs);
 int16_t compute_nr_SSB_PL(NR_UE_MAC_INST_t *mac, short ssb_rsrp_dBm);
 
 // PUSCH scheduler:
@@ -447,7 +442,7 @@ uint8_t sl_determine_sci_1a_len(uint16_t *num_subchannels,
  *  @param nr_slot  : slot number
  *  @param frame duplex type  : Frame type
     @returns int : 0 or Sidelink slot type */
-int sl_nr_ue_slot_select(sl_nr_phy_config_request_t *cfg, int nr_slot, uint8_t frame_duplex_type);
+int sl_nr_ue_slot_select(const sl_nr_phy_config_request_t *cfg, int nr_slot, uint8_t frame_duplex_type);
 
 void nr_ue_sidelink_scheduler(nr_sidelink_indication_t *sl_ind, NR_UE_MAC_INST_t *mac);
 

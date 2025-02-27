@@ -23,10 +23,7 @@
 extern "C" {
 #include "openair2/LAYER2/NR_MAC_UE/mac_proto.h"
 #include "executables/softmodem-common.h"
-uint64_t get_softmodem_optmask(void)
-{
-  return 0;
-}
+
 static softmodem_params_t softmodem_params;
 softmodem_params_t *get_softmodem_params(void)
 {
@@ -99,7 +96,7 @@ TEST(test_init_ra, four_step_cbra)
   nr_rach_ConfigCommon.msg1_SubcarrierSpacing = &scs;
   mac.p_Max = 23;
   mac.nr_band = 78;
-  mac.frame_type = TDD;
+  mac.frame_structure.frame_type = TDD;
   mac.frequency_range = FR1;
 
   init_RA(&mac, &prach_resources, &nr_rach_ConfigCommon, &rach_ConfigGeneric, rach_ConfigDedicated);
@@ -124,7 +121,7 @@ TEST(test_init_ra, four_step_cfra)
   nr_rach_ConfigCommon.msg1_SubcarrierSpacing = &scs;
   mac.p_Max = 23;
   mac.nr_band = 78;
-  mac.frame_type = TDD;
+  mac.frame_structure.frame_type = TDD;
   mac.frequency_range = FR1;
 
   NR_RACH_ConfigDedicated_t rach_ConfigDedicated = {0};

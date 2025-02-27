@@ -34,7 +34,9 @@
 
 #ifdef __cplusplus
 #include <atomic>
+#ifndef _Atomic
 #define _Atomic(X) std::atomic< X >
+#endif
 #endif
 
 #include "defs_nr_common.h"
@@ -54,16 +56,12 @@
 #include "actor.h"
 //#include "openair1/SCHED_NR_UE/defs.h"
 
-#ifdef MEX
-  #define msg mexPrintf
-#else
-    #if ENABLE_RAL
-      #include "common/utils/hashtable/hashtable.h"
-      #include "COMMON/ral_messages_types.h"
-      #include "UTIL/queue.h"
-    #endif
-    #define msg(aRGS...) LOG_D(PHY, ##aRGS)
+#if ENABLE_RAL
+#include "common/utils/hashtable/hashtable.h"
+#include "COMMON/ral_messages_types.h"
+#include "UTIL/queue.h"
 #endif
+#define msg(aRGS...) LOG_D(PHY, ##aRGS)
 // use msg in the real-time thread context
 #define msg_nrt printf
 // use msg_nrt in the non real-time context (for initialization, ...)
@@ -85,10 +83,20 @@
 #define UNUSED(x) (void)x;
 #define NUM_DL_ACTORS 4
 
+// Set the number of barriers for processSlotTX to 512. This value has to be at least 483 for NTN where
+// DL-to-UL offset is up to 483. The selected value is also half of the frame range so that
+// (slot + frame * slots_per_frame) % NUM_PROCESS_SLOT_TX_BARRIERS is contiguous between the last slot of
+// frame 1023 and first slot of frame 0
+// e.g. in numerology 1:
+//       (19 + 1023 * 20) % 512 = 511
+//       (0  + 0 * 20) % 512 = 0
+#define NUM_PROCESS_SLOT_TX_BARRIERS 512
+
 #include "impl_defs_top.h"
 #include "impl_defs_nr.h"
 #include "time_meas.h"
 #include "PHY/CODING/coding_defs.h"
+#include "PHY/CODING/nrLDPC_coding/nrLDPC_coding_interface.h"
 #include "PHY/TOOLS/tools_defs.h"
 #include "common/platform_types.h"
 #include "NR_UE_TRANSPORT/nr_transport_ue.h"
@@ -322,6 +330,11 @@ typedef struct UE_NR_SCAN_INFO_s {
   int32_t freq_offset_Hz[3][10];
 } UE_NR_SCAN_INFO_t;
 
+typedef struct {
+  bool update;
+  fapi_nr_dl_ntn_config_command_pdu ntn_config_params;
+} ntn_config_message_t;
+
 /// Top-level PHY Data Structure for UE
 typedef struct PHY_VARS_NR_UE_s {
   /// \brief Module ID indicator for this instance
@@ -394,7 +407,6 @@ typedef struct PHY_VARS_NR_UE_s {
   uint8_t          prs_active_gNBs;
   NR_DL_UE_HARQ_t  dl_harq_processes[2][NR_MAX_DLSCH_HARQ_PROCESSES];
   NR_UL_UE_HARQ_t  ul_harq_processes[NR_MAX_ULSCH_HARQ_PROCESSES];
-  
   //Paging parameters
   uint32_t              IMSImod1024;
   uint32_t              PF;
@@ -481,9 +493,10 @@ typedef struct PHY_VARS_NR_UE_s {
   /// N0 (used for abstraction)
   double N0;
 
+  /// NR LDPC coding related
+  nrLDPC_coding_interface_t nrLDPC_coding_interface;
   uint8_t max_ldpc_iterations;
 
-  int ldpc_offload_enable;
   /// SRS variables
   nr_srs_info_t *nr_srs_info;
 
@@ -523,7 +536,7 @@ typedef struct PHY_VARS_NR_UE_s {
   void *phy_sim_pdsch_dl_ch_estimates_ext;
   uint8_t *phy_sim_dlsch_b;
 
-  dynamic_barrier_t process_slot_tx_barriers[NR_MAX_SLOTS_PER_FRAME];
+  dynamic_barrier_t process_slot_tx_barriers[NUM_PROCESS_SLOT_TX_BARRIERS];
 
   // Gain change required for automation RX gain change
   int adjust_rxgain;
@@ -533,6 +546,8 @@ typedef struct PHY_VARS_NR_UE_s {
   sl_nr_ue_phy_params_t SL_UE_PHY_PARAMS;
   Actor_t sync_actor;
   Actor_t dl_actors[NUM_DL_ACTORS];
+  Actor_t ul_actor;
+  ntn_config_message_t* ntn_config_message;
 } PHY_VARS_NR_UE;
 
 typedef struct {
@@ -540,6 +555,10 @@ typedef struct {
   int gNB_id;
   /// NR slot index within frame_tx [0 .. slots_per_frame - 1] to act upon for transmission
   int nr_slot_tx;
+  /// NR slot index tx offset to resume
+  /// in case of NTN, tx_offset can be changed dynamically via SIB19
+  /// we need to notify the right tx thread slot based on TX offset change
+  int nr_slot_tx_offset;
   int rx_slot_type;
   /// NR slot index within frame_rx [0 .. slots_per_frame - 1] to act upon for transmission
   int nr_slot_rx;
@@ -608,9 +627,7 @@ typedef struct nr_rxtx_thread_data_s {
   PHY_VARS_NR_UE    *UE;
   int writeBlockSize;
   nr_phy_data_t phy_data;
-  int tx_wait_for_dlsch;
-  int rx_offset;
-  enum stream_status_e stream_status;
+  dynamic_barrier_t *next_barrier;
 } nr_rxtx_thread_data_t;
 
 typedef struct LDPCDecode_ue_s {

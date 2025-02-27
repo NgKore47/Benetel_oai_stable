@@ -27,7 +27,7 @@
 
 typedef struct {
 	uint8_t* buffer;
-	uint16_t length;
+	uint32_t length;
 } vnf_p7_rx_message_segment_t;
 
 typedef struct vnf_p7_rx_message vnf_p7_rx_message_t;
@@ -91,6 +91,8 @@ typedef struct nfapi_vnf_p7_connection_info {
 	int sfn_sf;
 	int sfn;
 	int slot;
+  int mu; // some 5G slot calculations need the numerology to know the number
+          // of slots
 
 	int socket;
 	struct sockaddr_in local_addr;

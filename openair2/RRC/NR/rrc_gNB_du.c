@@ -426,13 +426,11 @@ static int invalidate_du_connections(gNB_RRC_INST *rrc, sctp_assoc_t assoc_id)
     if (ue_data.du_assoc_id == assoc_id) {
       /* this UE belongs to the DU that disconnected, set du_assoc_id to 0,
        * meaning DU is offline, then trigger release request */
-      cu_remove_f1_ue_data(ue_id);
       ue_data.du_assoc_id = 0;
-      cu_add_f1_ue_data(ue_id, &ue_data);
-      rrc_gNB_send_NGAP_UE_CONTEXT_RELEASE_REQ(0,
-                                               ue_context_p,
-                                               NGAP_CAUSE_RADIO_NETWORK,
-                                               NGAP_CAUSE_RADIO_NETWORK_RADIO_CONNECTION_WITH_UE_LOST);
+      bool success = cu_update_f1_ue_data(ue_id, &ue_data);
+      DevAssert(success);
+      ngap_cause_t cause = {.type = NGAP_CAUSE_RADIO_NETWORK, .value = NGAP_CAUSE_RADIO_NETWORK_RADIO_CONNECTION_WITH_UE_LOST};
+      rrc_gNB_send_NGAP_UE_CONTEXT_RELEASE_REQ(0, ue_context_p, cause);
       count++;
     }
   }
@@ -448,7 +446,7 @@ static void update_cell_info(nr_rrc_du_container_t *du, const f1ap_served_cell_i
   f1ap_served_cell_info_t *ci = &du->setup_req->cell[0].info;
   // make sure no memory is allocated
   free_f1ap_cell(ci, NULL);
-  copy_f1ap_served_cell_info(ci, new_ci);
+  *ci = copy_f1ap_served_cell_info(new_ci);
 
   NR_MeasurementTimingConfiguration_t *new_mtc =
       extract_mtc(new_ci->measurement_timing_config, new_ci->measurement_timing_config_len);
@@ -505,8 +503,10 @@ void rrc_gNB_process_f1_du_configuration_update(f1ap_gnb_du_configuration_update
       // MIB is mandatory, so will be overwritten. SIB1 is optional, so will
       // only be overwritten if present in sys_info
       ASN_STRUCT_FREE(asn_DEF_NR_MIB, du->mib);
-      if (sys_info->sib1 != NULL)
+      if (sys_info->sib1 != NULL) {
         ASN_STRUCT_FREE(asn_DEF_NR_SIB1, du->sib1);
+        du->sib1 = NULL;
+      }
 
       NR_MIB_t *mib = NULL;
       if (!extract_sys_info(sys_info, &mib, &du->sib1)) {
@@ -531,8 +531,6 @@ void rrc_gNB_process_f1_du_configuration_update(f1ap_gnb_du_configuration_update
   /* Send DU Configuration Acknowledgement */
   f1ap_gnb_du_configuration_update_acknowledge_t ack = {.transaction_id = conf_up->transaction_id};
   rrc->mac_rrc.gnb_du_configuration_update_acknowledge(assoc_id, &ack);
-  /* free F1AP message after use */
-  free_f1ap_du_configuration_update(conf_up);
 }
 
 void rrc_CU_process_f1_lost_connection(gNB_RRC_INST *rrc, f1ap_lost_connection_t *lc, sctp_assoc_t assoc_id)
@@ -645,4 +643,15 @@ nr_rrc_du_container_t *find_target_du(gNB_RRC_INST *rrc, sctp_assoc_t source_ass
     }
   }
   return target_du;
+}
+
+void trigger_f1_reset(gNB_RRC_INST *rrc, sctp_assoc_t du_assoc_id)
+{
+  f1ap_reset_t reset = {
+    .transaction_id = F1AP_get_next_transaction_identifier(0, 0),
+    .cause = F1AP_CAUSE_TRANSPORT,
+    .cause_value = 1, // F1AP_CauseTransport_transport_resource_unavailable
+    .reset_type = F1AP_RESET_ALL, // DU does not support partial reset yet
+  };
+  rrc->mac_rrc.f1_reset(du_assoc_id, &reset);
 }

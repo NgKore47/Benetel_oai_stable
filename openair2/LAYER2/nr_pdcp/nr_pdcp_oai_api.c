@@ -640,18 +640,28 @@ uint64_t nr_pdcp_module_init(uint64_t _pdcp_optmask, int id)
     int num_if = (NFAPI_MODE == NFAPI_UE_STUB_PNF || IS_SOFTMODEM_SIML1 || NFAPI_MODE == NFAPI_MODE_STANDALONE_PNF)
                      ? MAX_MOBILES_PER_ENB
                      : 1;
-    tun_init(ifprefix, num_if, id);
+    int begx = (id == 0) ? 0 : id - 1;
+    int endx = (id == 0) ? num_if : id;
+    for (int i = begx; i < endx; i++) {
+      char ifname[IFNAMSIZ];
+      tun_generate_ifname(ifname, ifprefix, i);
+      tun_init(ifname, i);
+    }
     if (IS_SOFTMODEM_NOS1) {
       const char *ip = !get_softmodem_params()->nsa ? "10.0.1.2" : "10.0.1.3";
-      tun_config(1, ip, NULL, ifprefix);
+      char ifname[IFNAMSIZ];
+      tun_generate_ifname(ifname, ifprefix, id);
+      tun_config(ifname, ip, NULL);
       set_qfi_pduid(7, 10);
     }
     LOG_I(PDCP, "UE pdcp will use tun interface\n");
     start_pdcp_tun_ue();
   } else if (ENB_NAS_USE_TUN) {
     char *ifprefix = get_softmodem_params()->nsa ? "oaitun_gnb" : "oaitun_enb";
-    tun_init(ifprefix, 1, id);
-    tun_config(1, "10.0.1.1", NULL, ifprefix);
+    char ifname[IFNAMSIZ];
+    tun_generate_ifname(ifname, ifprefix, id);
+    tun_init(ifname, id);
+    tun_config(ifname, "10.0.1.1", NULL);
     LOG_I(PDCP, "ENB pdcp will use tun interface\n");
     start_pdcp_tun_enb();
   }
@@ -718,23 +728,9 @@ static void deliver_pdu_drb_gnb(void *deliver_pdu_data, ue_id_t ue_id, int rb_id
   protocol_ctxt_t ctxt = { .enb_flag = 1, .rntiMaybeUEid = ue_data.secondary_ue };
 
   if (NODE_IS_CU(node_type)) {
-    MessageDef  *message_p = itti_alloc_new_message_sized(TASK_PDCP_ENB, 0,
-							  GTPV1U_TUNNEL_DATA_REQ,
-							  sizeof(gtpv1u_tunnel_data_req_t)
-							  + size
-							  + GTPU_HEADER_OVERHEAD_MAX);
-    AssertFatal(message_p != NULL, "OUT OF MEMORY");
-    gtpv1u_tunnel_data_req_t *req=&GTPV1U_TUNNEL_DATA_REQ(message_p);
-    uint8_t *gtpu_buffer_p = (uint8_t*)(req+1);
-    memcpy(gtpu_buffer_p + GTPU_HEADER_OVERHEAD_MAX, buf, size);
-    req->buffer        = gtpu_buffer_p;
-    req->length        = size;
-    req->offset        = GTPU_HEADER_OVERHEAD_MAX;
-    req->ue_id = ue_id; // use CU UE ID as GTP will use that to look up TEID
-    req->bearer_id = rb_id;
     LOG_D(PDCP, "%s() (drb %d) sending message to gtp size %d\n", __func__, rb_id, size);
     extern instance_t CUuniqInstance;
-    itti_send_msg_to_task(TASK_GTPV1_U, CUuniqInstance, message_p);
+    gtpv1uSendDirect(CUuniqInstance, ue_id, rb_id, (uint8_t *)buf, size, false, false);
   } else {
     uint8_t *memblock = malloc16(size);
     memcpy(memblock, buf, size);
