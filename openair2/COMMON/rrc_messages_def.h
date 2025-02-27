@@ -63,6 +63,7 @@ MESSAGE_DEF(NAS_CONN_ESTABLI_REQ, MESSAGE_PRIORITY_MED, nas_establish_req_t, nas
 MESSAGE_DEF(NAS_UPLINK_DATA_REQ, MESSAGE_PRIORITY_MED, ul_info_transfer_req_t, nas_ul_data_req)
 MESSAGE_DEF(NAS_DETACH_REQ, MESSAGE_PRIORITY_MED, nas_detach_req_t, nas_detach_req)
 MESSAGE_DEF(NAS_DEREGISTRATION_REQ, MESSAGE_PRIORITY_MED, nas_deregistration_req_t, nas_deregistration_req)
+MESSAGE_DEF(NAS_5GMM_IND, MESSAGE_PRIORITY_MED, nas_5gmm_ind_t, nas_5gmm_ind)
 
 MESSAGE_DEF(NAS_RAB_ESTABLI_RSP, MESSAGE_PRIORITY_MED, rab_establish_rsp_t, nas_rab_est_rsp)
 
@@ -74,6 +75,7 @@ MESSAGE_DEF(NAS_CELL_SELECTION_IND, MESSAGE_PRIORITY_MED, cell_info_ind_t, nas_c
 MESSAGE_DEF(NAS_PAGING_IND, MESSAGE_PRIORITY_MED, paging_ind_t, nas_paging_ind)
 MESSAGE_DEF(NAS_CONN_ESTABLI_CNF, MESSAGE_PRIORITY_MED, nas_establish_cnf_t, nas_conn_establi_cnf)
 MESSAGE_DEF(NAS_CONN_RELEASE_IND, MESSAGE_PRIORITY_MED, nas_release_ind_t, nas_conn_release_ind)
+MESSAGE_DEF(NR_NAS_CONN_ESTABLISH_IND, MESSAGE_PRIORITY_MED, nas_establish_ind_t, nr_nas_conn_establish_ind)
 MESSAGE_DEF(NR_NAS_CONN_RELEASE_IND,    MESSAGE_PRIORITY_MED,       NRNasConnReleaseInd,        nr_nas_conn_release_ind)
 MESSAGE_DEF(NAS_UPLINK_DATA_CNF, MESSAGE_PRIORITY_MED, ul_info_transfer_cnf_t, nas_ul_data_cnf)
 MESSAGE_DEF(NAS_DOWNLINK_DATA_IND, MESSAGE_PRIORITY_MED, dl_info_transfer_ind_t, nas_dl_data_ind)
@@ -81,6 +83,13 @@ MESSAGE_DEF(NAS_DOWNLINK_DATA_IND, MESSAGE_PRIORITY_MED, dl_info_transfer_ind_t,
 // xNB: realtime -> RRC messages
 MESSAGE_DEF(RRC_SUBFRAME_PROCESS,       MESSAGE_PRIORITY_MED,       RrcSubframeProcess,         rrc_subframe_process)
 MESSAGE_DEF(NRRRC_FRAME_PROCESS,        MESSAGE_PRIORITY_MED,       NRRrcFrameProcess,          nr_rrc_frame_process)
+
+// UE: RRC -> MAC messages
+MESSAGE_DEF(NR_MAC_RRC_CONFIG_RESET, MESSAGE_PRIORITY_MED, nr_mac_rrc_config_reset_t, nr_mac_rrc_config_reset)
+MESSAGE_DEF(NR_MAC_RRC_CONFIG_CG, MESSAGE_PRIORITY_MED, nr_mac_rrc_config_cg_t, nr_mac_rrc_config_cg)
+MESSAGE_DEF(NR_MAC_RRC_CONFIG_MIB, MESSAGE_PRIORITY_MED, nr_mac_rrc_config_mib_t, nr_mac_rrc_config_mib)
+MESSAGE_DEF(NR_MAC_RRC_CONFIG_SIB1, MESSAGE_PRIORITY_MED, nr_mac_rrc_config_sib1_t, nr_mac_rrc_config_sib1)
+MESSAGE_DEF(NR_MAC_RRC_CONFIG_OTHER_SIB, MESSAGE_PRIORITY_MED, nr_mac_rrc_config_other_sib_t, nr_mac_rrc_config_other_sib)
 
 // eNB: RLC -> RRC messages
 MESSAGE_DEF(RLC_SDU_INDICATION,         MESSAGE_PRIORITY_MED,       RlcSduIndication,           rlc_sdu_indication)

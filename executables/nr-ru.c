@@ -29,13 +29,10 @@
 #include <sys/sysinfo.h>
 #include <math.h>
 
-#undef MALLOC //there are two conflicting definitions, so we better make sure we don't use it at all
-
 #include "common/utils/nr/nr_common.h"
 #include "common/utils/assertions.h"
 #include "common/utils/system.h"
 #include "common/ran_context.h"
-#include "rt_profiling.h"
 
 #include "radio/COMMON/common_lib.h"
 #include "radio/ETHERNET/ethernet_lib.h"
@@ -71,7 +68,6 @@ static int DEFRUTPCORES[] = {-1,-1,-1,-1};
 #include <nfapi/oai_integration/vendor_ext.h>
 #include "executables/nr-softmodem-common.h"
 
-uint16_t sl_ahead;
 static void NRRCconfig_RU(configmodule_interface_t *cfg);
 
 /*************************************************************/
@@ -1040,15 +1036,6 @@ void ru_tx_func(void *param)
   int print_frame = 8;
   char filename[40];
 
-  int cumul_samples = fp->get_samples_per_slot(0, fp);
-  int i = 1;
-  for (; i < fp->slots_per_subframe / 2; i++)
-    cumul_samples += fp->get_samples_per_slot(i, fp);
-  int samples = cumul_samples / i;
-  int64_t absslot_tx = info->timestamp_tx / samples;
-  int64_t absslot_rx = absslot_tx - ru->sl_ahead;
-  int rt_prof_idx = absslot_rx % RT_PROF_DEPTH;
-  clock_gettime(CLOCK_MONOTONIC,&ru->rt_ru_profiling.start_RU_TX[rt_prof_idx]);
   // do TX front-end processing if needed (precoding and/or IDFTs)
   if (ru->feptx_prec)
     ru->feptx_prec(ru,frame_tx,slot_tx);
@@ -1095,11 +1082,48 @@ void ru_tx_func(void *param)
       }//for (i=0; i<ru->nb_tx; i++)
     }//if(frame_tx == print_frame)
   }//else  emulate_rf
-  clock_gettime(CLOCK_MONOTONIC,&ru->rt_ru_profiling.return_RU_TX[rt_prof_idx]);
-  struct timespec *t0=&ru->rt_ru_profiling.start_RU_TX[rt_prof_idx];
-  struct timespec *t1=&ru->rt_ru_profiling.return_RU_TX[rt_prof_idx];
+}
 
-  LOG_D(PHY,"rt_prof_idx %d : RU_TX time %d\n",rt_prof_idx,(int)(1e9 * (t1->tv_sec - t0->tv_sec) + (t1->tv_nsec-t0->tv_nsec)));
+/* @brief wait for the next RX TTI to be free
+ *
+ * Certain radios, e.g., RFsim, can run faster than real-time. This might
+ * create problems, e.g., if RX and TX get too far from each other. This
+ * function ensures that a maximum of 4 RX slots are processed at a time (and
+ * not more than those four are started).
+ *
+ * Through the queue L1_rx_out, we are informed about completed RX jobs.
+ * rx_tti_busy keeps track of individual slots that have been started; this
+ * function blocks until the current frame/slot is completed, signaled through
+ * a message.
+ *
+ * @param L1_rx_out the queue from which to read completed RX jobs
+ * @param rx_tti_busy array to mark RX job completion
+ * @param frame_rx the frame to wait for
+ * @param slot_rx the slot to wait for
+ */
+static bool wait_free_rx_tti(notifiedFIFO_t *L1_rx_out, bool rx_tti_busy[RU_RX_SLOT_DEPTH], int frame_rx, int slot_rx)
+{
+  int idx = slot_rx % RU_RX_SLOT_DEPTH;
+  if (rx_tti_busy[idx]) {
+    bool not_done = true;
+    LOG_D(NR_PHY, "%d.%d Waiting to access RX slot %d\n", frame_rx, slot_rx, idx);
+    // block and wait for frame_rx/slot_rx free from previous slot processing.
+    // as we can get other slots, we loop on the queue
+    while (not_done) {
+      notifiedFIFO_elt_t *res = pullNotifiedFIFO(L1_rx_out);
+      if (!res)
+        return false;
+      processingData_L1_t *info = NotifiedFifoData(res);
+      LOG_D(NR_PHY, "%d.%d Got access to RX slot %d.%d (%d)\n", frame_rx, slot_rx, info->frame_rx, info->slot_rx, idx);
+      rx_tti_busy[info->slot_rx % RU_RX_SLOT_DEPTH] = false;
+      if ((info->slot_rx % RU_RX_SLOT_DEPTH) == idx)
+        not_done = false;
+      delNotifiedFIFO_elt(res);
+    }
+  }
+  // set the tti to busy: the caller will process this slot now
+  rx_tti_busy[idx] = true;
+  return true;
 }
 
 void *ru_thread(void *param)
@@ -1115,9 +1139,7 @@ void *ru_thread(void *param)
   char               threadname[40];
   int initial_wait = 0;
 
-#ifndef OAI_FHI72
   bool rx_tti_busy[RU_RX_SLOT_DEPTH] = {false};
-#endif
   // set default return value
   ru_thread_status = 0;
   // set default return value
@@ -1218,29 +1240,7 @@ void *ru_thread(void *param)
   struct timespec slot_start;
 	clock_gettime(CLOCK_MONOTONIC, &slot_start);
   
-  struct timespec slot_duration; 
-	slot_duration.tv_sec = 0;
-	//slot_duration.tv_nsec = 0.5e6;
-	slot_duration.tv_nsec = 0.5e6;
-
-  
-
   while (!oai_exit) {
-    
-    if (NFAPI_MODE==NFAPI_MODE_VNF || NFAPI_MODE == NFAPI_MODE_AERIAL ) {
-      // We should make a VNF main loop with proper tasks calls in case of VNF
-      slot_start = timespec_add(slot_start,slot_duration);
-      struct timespec curr_time;
-      clock_gettime(CLOCK_MONOTONIC, &curr_time);    
-      struct timespec sleep_time;
-      
-      if((slot_start.tv_sec > curr_time.tv_sec) ||
-	 (slot_start.tv_sec == curr_time.tv_sec && slot_start.tv_nsec > curr_time.tv_nsec)){
-	sleep_time = timespec_sub(slot_start,curr_time);
-	usleep(sleep_time.tv_nsec * 1e-3); 
-      }
-    }
-    
     if (slot==(fp->slots_per_frame-1)) {
       slot=0;
       frame++;
@@ -1275,9 +1275,6 @@ void *ru_thread(void *param)
       proc->timestamp_tx += fp->get_samples_per_slot(i % fp->slots_per_frame, fp);
     proc->tti_tx = (proc->tti_rx + ru->sl_ahead) % fp->slots_per_frame;
     proc->frame_tx = proc->tti_rx > proc->tti_tx ? (proc->frame_rx + 1) & 1023 : proc->frame_rx;
-    int64_t absslot_rx = proc->timestamp_rx/fp->get_samples_per_slot(proc->tti_rx,fp);
-    int rt_prof_idx = absslot_rx % RT_PROF_DEPTH;
-    clock_gettime(CLOCK_MONOTONIC,&ru->rt_ru_profiling.return_RU_south_in[rt_prof_idx]);
     LOG_D(PHY,"AFTER fh_south_in - SFN/SL:%d%d RU->proc[RX:%d.%d TX:%d.%d] RC.gNB[0]:[RX:%d%d TX(SFN):%d]\n",
           frame,slot,
           proc->frame_rx,proc->tti_rx,
@@ -1288,42 +1285,14 @@ void *ru_thread(void *param)
     if (ru->idx != 0)
       proc->frame_tx = (proc->frame_tx + proc->frame_offset) & 1023;
 
-#ifndef OAI_FHI72
     // do RX front-end processing (frequency-shift, dft) if needed
     int slot_type = nr_slot_select(&ru->config, proc->frame_rx, proc->tti_rx);
     if (slot_type == NR_UPLINK_SLOT || slot_type == NR_MIXED_SLOT) {
+      if (!wait_free_rx_tti(&gNB->L1_rx_out, rx_tti_busy, proc->frame_rx, proc->tti_rx))
+        break; // nothing to wait for: we have to stop
       if (ru->feprx) {
-        if (rx_tti_busy[proc->tti_rx % RU_RX_SLOT_DEPTH]) {
-          bool not_done = true;
-          LOG_D(NR_PHY, "%d.%d Waiting to access RX slot %d\n", proc->frame_rx, proc->tti_rx, proc->tti_rx % RU_RX_SLOT_DEPTH);
-          // now we block and wait our slot memory zone is freed from previous slot processing
-          // as we can get other slots ending, we loop on the queue
-          notifiedFIFO_elt_t *res = NULL;
-          while (not_done) {
-            res = pullNotifiedFIFO(&gNB->L1_rx_out);
-            if (!res)
-              break;
-            processingData_L1_t *info = (processingData_L1_t *)NotifiedFifoData(res);
-            LOG_D(NR_PHY,
-                  "%d.%d Got access to RX slot %d.%d (%d)\n",
-                  proc->frame_rx,
-                  proc->tti_rx,
-                  info->frame_rx,
-                  info->slot_rx,
-                  proc->tti_rx % RU_RX_SLOT_DEPTH);
-            rx_tti_busy[info->slot_rx % RU_RX_SLOT_DEPTH] = false;
-            if ((info->slot_rx % RU_RX_SLOT_DEPTH) == (proc->tti_rx % RU_RX_SLOT_DEPTH))
-              not_done = false;
-            delNotifiedFIFO_elt(res);
-          }
-          if (!res)
-            break;
-        }
-        // set the tti that was generated to busy
-        rx_tti_busy[proc->tti_rx % RU_RX_SLOT_DEPTH] = true;
         ru->feprx(ru,proc->tti_rx);
         LOG_D(NR_PHY, "Setting %d.%d (%d) to busy\n", proc->frame_rx, proc->tti_rx, proc->tti_rx % RU_RX_SLOT_DEPTH);
-        clock_gettime(CLOCK_MONOTONIC,&ru->rt_ru_profiling.return_RU_feprx[rt_prof_idx]);
         //LOG_M("rxdata.m","rxs",ru->common.rxdata[0],1228800,1,1);
         LOG_D(PHY,"RU proc: frame_rx = %d, tti_rx = %d\n", proc->frame_rx, proc->tti_rx);
         gNBscopeCopy(RC.gNB[0],
@@ -1354,17 +1323,11 @@ void *ru_thread(void *param)
                            proc->frame_rx,
                            proc->tti_rx);
           }
-          clock_gettime(CLOCK_MONOTONIC,&ru->rt_ru_profiling.return_RU_prachrx[rt_prof_idx]);
           free_nr_ru_prach_entry(ru,prach_id);
           VCD_SIGNAL_DUMPER_DUMP_FUNCTION_BY_NAME(VCD_SIGNAL_DUMPER_FUNCTIONS_PHY_RU_PRACH_RX, 0);
         } // end if (prach_id > 0)
       } // end if (ru->feprx)
-      else {
-         memset(&ru->rt_ru_profiling.return_RU_feprx[rt_prof_idx],0,sizeof(struct timespec));
-         memset(&ru->rt_ru_profiling.return_RU_prachrx[rt_prof_idx],0,sizeof(struct timespec));
-      }
     } // end if (slot_type == NR_UPLINK_SLOT || slot_type == NR_MIXED_SLOT) {
-#endif
 
     notifiedFIFO_elt_t *resTx = newNotifiedFIFO_elt(sizeof(processingData_L1tx_t), 0, &gNB->L1_tx_out, NULL);
     processingData_L1tx_t *syncMsgTx = NotifiedFifoData(resTx);
@@ -1442,6 +1405,12 @@ void start_RU_proc(RU_t *ru)
 void kill_NR_RU_proc(int inst) {
   RU_t *ru = RC.ru[inst];
   RU_proc_t *proc = &ru->proc;
+
+  if (ru->if_south != REMOTE_IF4p5) {
+    abortTpool(ru->threadPool);
+    abortNotifiedFIFO(ru->respfeprx);
+    abortNotifiedFIFO(ru->respfeptx);
+  }
 
   /* Note: it seems pthread_FH and and FEP thread below both use
    * mutex_fep/cond_fep. Thus, we unlocked above for pthread_FH above and do

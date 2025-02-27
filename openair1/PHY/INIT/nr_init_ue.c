@@ -338,6 +338,8 @@ void term_nr_ue_signal(PHY_VARS_NR_UE *ue, int nb_connected_gNB)
     free_and_zero(ue->prs_vars[idx]);
   }
 
+  free_and_zero(ue->ntn_config_message);
+  
   sl_ue_free(ue);
 }
 
@@ -356,6 +358,7 @@ void free_nr_ue_dl_harq(NR_DL_UE_HARQ_t harq_list[2][NR_MAX_DLSCH_HARQ_PROCESSES
         free_and_zero(harq_list[j][i].c[r]);
         free_and_zero(harq_list[j][i].d[r]);
       }
+      free_and_zero(harq_list[j][i].b);
       free_and_zero(harq_list[j][i].c);
       free_and_zero(harq_list[j][i].d);
     }
@@ -406,6 +409,7 @@ void nr_init_dl_harq_processes(NR_DL_UE_HARQ_t harq_list[2][NR_MAX_DLSCH_HARQ_PR
       memset(harq_list[j] + i, 0, sizeof(NR_DL_UE_HARQ_t));
       init_downlink_harq_status(harq_list[j] + i);
 
+      harq_list[j][i].b = malloc16_clear(a_segments * 1056);
       harq_list[j][i].c = malloc16(a_segments*sizeof(uint8_t *));
       harq_list[j][i].d = malloc16(a_segments*sizeof(int16_t *));
       const int sz=5*8448*sizeof(int16_t);
@@ -511,7 +515,7 @@ void phy_init_nr_top(PHY_VARS_NR_UE *ue) {
   NR_DL_FRAME_PARMS *frame_parms = &ue->frame_parms;
   init_delay_table(frame_parms->ofdm_symbol_size, MAX_DELAY_COMP, NR_MAX_OFDM_SYMBOL_SIZE, frame_parms->delay_table);
   crcTableInit();
-  init_scrambling_luts();
+  init_byte2m128i();
   load_dftslib();
   init_context_synchro_nr(frame_parms);
   generate_ul_reference_signal_sequences(SHRT_MAX);

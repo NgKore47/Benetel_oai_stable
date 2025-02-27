@@ -99,7 +99,8 @@ static bool check_plmn_identity(const f1ap_plmn_t *check_plmn, const f1ap_plmn_t
   return plmn->mcc == check_plmn->mcc && plmn->mnc_digit_length == check_plmn->mnc_digit_length && plmn->mnc == check_plmn->mnc;
 }
 
-static void du_clear_all_ue_states()
+/* not static, so we can call it from the outside (in telnet) */
+void du_clear_all_ue_states()
 {
   gNB_MAC_INST *mac = RC.nrmac[0];
   NR_SCHED_LOCK(&mac->sched_lock);
@@ -124,12 +125,9 @@ void f1_reset_cu_initiated(const f1ap_reset_t *reset)
 {
   LOG_I(MAC, "F1 Reset initiated by CU\n");
 
-  f1ap_reset_ack_t ack = {0};
+  f1ap_reset_ack_t ack = {.transaction_id = reset->transaction_id};
   if(reset->reset_type == F1AP_RESET_ALL) {
     du_clear_all_ue_states();
-    ack = (f1ap_reset_ack_t) {
-      .transaction_id = reset->transaction_id
-    };
   } else {
     // reset->reset_type == F1AP_RESET_PART_OF_F1_INTERFACE
     AssertFatal(1==0, "Not implemented yet\n");
@@ -481,7 +479,8 @@ static NR_UE_info_t *create_new_UE(gNB_MAC_INST *mac, uint32_t cu_id)
     return NULL;
 
   f1_ue_data_t new_ue_data = {.secondary_ue = cu_id};
-  du_add_f1_ue_data(rnti, &new_ue_data);
+  bool success = du_add_f1_ue_data(rnti, &new_ue_data);
+  DevAssert(success);
 
   const NR_ServingCellConfigCommon_t *scc = mac->common_channels[CC_id].ServingCellConfigCommon;
   const NR_ServingCellConfig_t *sccd = mac->common_channels[CC_id].pre_ServingCellConfig;
@@ -825,7 +824,8 @@ void dl_rrc_message_transfer(const f1ap_dl_rrc_message_t *dl_rrc)
   if (!du_exists_f1_ue_data(dl_rrc->gNB_DU_ue_id)) {
     LOG_D(NR_MAC, "No CU UE ID stored for UE RNTI %04x, adding CU UE ID %d\n", dl_rrc->gNB_DU_ue_id, dl_rrc->gNB_CU_ue_id);
     f1_ue_data_t new_ue_data = {.secondary_ue = dl_rrc->gNB_CU_ue_id};
-    du_add_f1_ue_data(dl_rrc->gNB_DU_ue_id, &new_ue_data);
+    bool success = du_add_f1_ue_data(dl_rrc->gNB_DU_ue_id, &new_ue_data);
+    DevAssert(success);
   }
 
   if (UE->expect_reconfiguration && dl_rrc->srb_id == 1) {

@@ -25,6 +25,8 @@
 #include "E1AP_E1AP-PDU.h"
 #include "E1AP_ProcedureCode.h"
 #include "E1AP_SuccessfulOutcome.h"
+#include "E1AP_UnsuccessfulOutcome.h"
+#include "E1AP_CriticalityDiagnostics-IE-List.h"
 #include "E1AP_InitiatingMessage.h"
 #include "E1AP_ProtocolIE-ID.h"
 #include "E1AP_ProtocolIE-Field.h"
@@ -46,6 +48,7 @@
 #include "E1AP_System-BearerContextSetupRequest.h"
 #include "E1AP_MaximumIPdatarate.h"
 #include "E1AP_PDU-Session-Type.h"
+#include "E1AP_Data-Forwarding-Information.h"
 // E1 Bearer Context Setup Response
 #include "E1AP_PDU-Session-Resource-Setup-Item.h"
 #include "E1AP_DRB-Setup-Item-NG-RAN.h"
@@ -53,5 +56,22 @@
 #include "E1AP_QoS-Flow-Item.h"
 #include "E1AP_DRB-Failed-List-NG-RAN.h"
 #include "E1AP_DRB-Failed-Item-NG-RAN.h"
+// E1 Setup
+#include "E1AP_SupportedPLMNs-Item.h"
+#include "E1AP_Slice-Support-List.h"
+#include "E1AP_Slice-Support-Item.h"
+#include "E1AP_ProtocolIE-Field.h"
+#include "E1AP_Transport-UP-Layer-Addresses-Info-To-Add-List.h"
+#include "E1AP_Transport-UP-Layer-Addresses-Info-To-Add-Item.h"
+#include "E1AP_Transport-UP-Layer-Addresses-Info-To-Remove-List.h"
+#include "E1AP_Transport-UP-Layer-Addresses-Info-To-Remove-Item.h"
+#include "E1AP_GTPTLAs.h"
+#include "E1AP_GTPTLA-Item.h"
+// E1 Bearer Context Modification Request
+#include "E1AP_PDU-Session-Resource-To-Modify-Item.h"
+#include "E1AP_DRB-To-Modify-List-NG-RAN.h"
+#include "E1AP_DRB-To-Modify-Item-NG-RAN.h"
+#include "E1AP_PDU-Session-Resource-To-Setup-Mod-Item.h"
+#include "E1AP_DRB-To-Setup-Mod-Item-NG-RAN.h"
 
 #endif /* E1AP_LIB_INCLUDES_H_ */

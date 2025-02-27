@@ -76,6 +76,7 @@
 #define NAS_UPLINK_DATA_REQ(mSGpTR)     (mSGpTR)->ittiMsg.nas_ul_data_req
 #define NAS_DETACH_REQ(mSGpTR)          (mSGpTR)->ittiMsg.nas_detach_req
 #define NAS_DEREGISTRATION_REQ(mSGpTR)  (mSGpTR)->ittiMsg.nas_deregistration_req
+#define NAS_5GMM_IND(mSGpTR)            (mSGpTR)->ittiMsg.nas_5gmm_ind
 
 #define NAS_RAB_ESTABLI_RSP(mSGpTR)     (mSGpTR)->ittiMsg.nas_rab_est_rsp
 
@@ -84,6 +85,7 @@
 #define NAS_PAGING_IND(mSGpTR)          (mSGpTR)->ittiMsg.nas_paging_ind
 #define NAS_CONN_ESTABLI_CNF(mSGpTR)    (mSGpTR)->ittiMsg.nas_conn_establi_cnf
 #define NAS_CONN_RELEASE_IND(mSGpTR)    (mSGpTR)->ittiMsg.nas_conn_release_ind
+#define NR_NAS_CONN_ESTABLISH_IND(mSGpTR) (mSGpTR)->ittiMsg.nr_nas_conn_establish_ind
 #define NR_NAS_CONN_RELEASE_IND(mSGpTR) (mSGpTR)->ittiMsg.nr_nas_conn_release_ind
 #define NAS_UPLINK_DATA_CNF(mSGpTR)     (mSGpTR)->ittiMsg.nas_ul_data_cnf
 #define NAS_DOWNLINK_DATA_IND(mSGpTR)   (mSGpTR)->ittiMsg.nas_dl_data_ind
@@ -96,12 +98,16 @@
 
 #define NAS_OAI_TUN_NSA(mSGpTR)         (mSGpTR)->ittiMsg.nas_oai_tun_nsa
 #define NAS_PDU_SESSION_REQ(mSGpTR) (mSGpTR)->ittiMsg.nas_pdu_session_req
+#define NR_MAC_RRC_CONFIG_RESET(mSGpTR) (mSGpTR)->ittiMsg.nr_mac_rrc_config_reset
+#define NR_MAC_RRC_CONFIG_CG(mSGpTR) (mSGpTR)->ittiMsg.nr_mac_rrc_config_cg
+#define NR_MAC_RRC_CONFIG_MIB(mSGpTR) (mSGpTR)->ittiMsg.nr_mac_rrc_config_mib
+#define NR_MAC_RRC_CONFIG_SIB1(mSGpTR) (mSGpTR)->ittiMsg.nr_mac_rrc_config_sib1
+#define NR_MAC_RRC_CONFIG_OTHER_SIB(mSGpTR) (mSGpTR)->ittiMsg.nr_mac_rrc_config_other_sib
 
 #define NR_RRC_RLC_MAXRTX(mSGpTR) (mSGpTR)->ittiMsg.nr_rlc_maxrtx_indication
 
-//-------------------------------------------------------------------------------------------//
 typedef struct RrcStateInd_s {
-  Rrc_State_t     state;
+  Rrc_State_t state;
   Rrc_Sub_State_t sub_state;
 } RrcStateInd;
 
@@ -458,5 +464,26 @@ typedef struct rlc_sdu_indication_s {
 typedef struct {
   int ue_id;
 } RlcMaxRtxIndication;
+
+#include "openair2/RRC/NR_UE/rrc_defs.h"
+typedef struct {
+  NR_ReestablishmentCause_t cause;
+} nr_mac_rrc_config_reset_t;
+typedef struct {
+  NR_CellGroupConfig_t *cellGroupConfig;
+  NR_UE_NR_Capability_t *UE_NR_Capability;
+} nr_mac_rrc_config_cg_t;
+typedef struct {
+  NR_BCCH_BCH_Message_t *bcch;
+  int get_sib;
+} nr_mac_rrc_config_mib_t;
+typedef struct {
+  NR_SIB1_t *sib1;
+  bool can_start_ra;
+} nr_mac_rrc_config_sib1_t;
+typedef struct {
+  NR_SIB19_r17_t *sib19;
+  bool can_start_ra;
+} nr_mac_rrc_config_other_sib_t;
 
 #endif /* RRC_MESSAGES_TYPES_H_ */

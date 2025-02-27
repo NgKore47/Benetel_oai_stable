@@ -241,18 +241,24 @@ static int rrc_set_sub_state( module_id_t ue_mod_idP, Rrc_Sub_State_t subState )
   if (!IS_SOFTMODEM_NOS1) {
     switch (UE_rrc_inst[ue_mod_idP].RrcState) {
       case RRC_STATE_INACTIVE:
-        AssertFatal ((RRC_SUB_STATE_INACTIVE_FIRST <= subState) && (subState <= RRC_SUB_STATE_INACTIVE_LAST),
-                     "Invalid sub state %d for state %d!\n", subState, UE_rrc_inst[ue_mod_idP].RrcState);
+        AssertFatal(RRC_SUB_STATE_INACTIVE <= subState,
+                    "Invalid sub state %d for state %d!\n",
+                    subState,
+                    UE_rrc_inst[ue_mod_idP].RrcState);
         break;
 
       case RRC_STATE_IDLE:
-        AssertFatal ((RRC_SUB_STATE_IDLE_FIRST <= subState) && (subState <= RRC_SUB_STATE_IDLE_LAST),
-                     "Invalid sub state %d for state %d!\n", subState, UE_rrc_inst[ue_mod_idP].RrcState);
+        AssertFatal((RRC_SUB_STATE_IDLE_SEARCHING <= subState) && (subState <= RRC_SUB_STATE_IDLE),
+                    "Invalid sub state %d for state %d!\n",
+                    subState,
+                    UE_rrc_inst[ue_mod_idP].RrcState);
         break;
 
       case RRC_STATE_CONNECTED:
-        AssertFatal ((RRC_SUB_STATE_CONNECTED_FIRST <= subState) && (subState <= RRC_SUB_STATE_CONNECTED_LAST),
-                     "Invalid sub state %d for state %d!\n", subState, UE_rrc_inst[ue_mod_idP].RrcState);
+        AssertFatal(RRC_SUB_STATE_CONNECTED <= subState,
+                    "Invalid sub state %d for state %d!\n",
+                    subState,
+                    UE_rrc_inst[ue_mod_idP].RrcState);
         break;
     }
   }
@@ -771,7 +777,9 @@ rrc_ue_establish_drb(
              "10.0.%d.%d",
              UE_NAS_USE_TUN ? 1 : (ip_addr_offset3 + ue_mod_idP + 1),
              ip_addr_offset4 + ue_mod_idP + 1);
-    oip_ifup = tun_config(ip_addr_offset3 + ue_mod_idP + 1, ip, NULL, "oaitun_ue");
+    char ifname[IFNAMSIZ];
+    tun_generate_ifname(ifname, "oaitun_ue", ip_addr_offset3 + ue_mod_idP);
+    oip_ifup = tun_config(ifname, ip, NULL);
 
     if (oip_ifup == 0 && (!UE_NAS_USE_TUN)) { // interface is up --> send a config the DRB
       LOG_I(OIP,"[UE %d] Config the ue net interface %d to send/receive pkt on DRB %ld to/from the protocol stack\n",
@@ -6295,10 +6303,6 @@ rrc_rx_tx_ue(
 )
 //-----------------------------------------------------------------------------
 {
-#ifdef LOCALIZATION
-  double                         estimated_distance;
-  protocol_ctxt_t                ctxt;
-#endif
   VCD_SIGNAL_DUMPER_DUMP_FUNCTION_BY_NAME(VCD_SIGNAL_DUMPER_FUNCTIONS_RRC_RX_TX,VCD_FUNCTION_IN);
 
   // check timers

@@ -475,6 +475,19 @@ cmake .. -GNinja -DOAI_FHI72=ON -Dxran_LOCATION=$HOME/phy/fhi_lib/lib
 ninja nr-softmodem oran_fhlib_5g params_libconfig
 ```
 
+Note that in tags 2025.w06 and prior, the FHI72 driver used polling to wait for
+the next slot. This is inefficient as it burns CPU time, and has been replaced
+with a more efficient mechanism. Nevertheless, if you experience problems that
+did not occur previously, it is possible to re-enable polling, either with
+`build_oai` like this
+
+    ./build_oai --gNB --ninja -t oran_fhlib_5g --cmake-opt -Dxran_LOCATION=$HOME/phy/fhi_lib/lib --cmake-opt -DOAI_FHI72_USE_POLLING=ON
+
+or with `cmake` like so
+
+    cmake .. -GNinja -DOAI_FHI72=ON -Dxran_LOCATION=$HOME/phy/fhi_lib/lib -DOAI_FHI72_USE_POLLING=ON
+    ninja oran_fhlib_5g
+
 # Configuration
 
 RU and DU configurations have a circular dependency: you have to configure DU MAC address in the RU configuration and the RU MAC address, VLAN and Timing advance parameters in the DU configuration.
@@ -917,6 +930,17 @@ Edit the sample OAI gNB configuration file and check following parameters:
     cannot preallocate memory on NUMA nodes other than 0; in this case, set
     this to 0 (no pre-allocation) and so that DPDK will allocate it on-demand
     on the right NUMA node.
+  * `dpdk_iova_mode`: Specifies DPDK IO Virtual Address (IOVA) mode:
+    * `PA`: IOVA as Physical Address (PA) mode, where DPDK IOVA memory layout
+      corresponds directly to the physical memory layout.
+    * `VA`: IOVA as Virtual Address (VA) mode, where DPDK IOVA addresses do not
+      follow the physical memory layout. Uses IOMMU to remap physical memory.
+      Requires kernel support and IOMMU for address translation.
+    * If not specified, default value of "PA" is used (for backwards compabilibity;
+      it was hardcoded to PA in the past). However, we recommend using "VA" mode
+      as it offers several benefits. For a detailed explanation of DPDK IOVA,
+      including the advantages and disadvantages of each mode, refer to
+      [Memory in DPDK](https://www.dpdk.org/memory-in-dpdk-part-2-deep-dive-into-iova/)
   * `owdm_enable`: used for eCPRI One-Way Delay Measurements; it depends if the RU supports it; if not set to 1 (enabled), default value is 0 (disabled)
   * `fh_config`: parameters that need to match RU parameters
     * timing parameters (starting with `T`) depend on the RU: `Tadv_cp_dl` is a
@@ -1029,6 +1053,8 @@ In this case, you should reverify that `ptp4l` and `phc2sys` are working, e.g.,
 do not do any jumps (during the last hour). While an occasional jump is not
 necessarily problematic for the gNB, many such messages mean that the system is
 not working, and UEs might not be able to attach or reach good performance.
+Also, you can try to compile with polling (see [the build
+section](.#build-oai-gnb)) to see if it resolves the problem.
 
 # Operation with multiple RUs
 

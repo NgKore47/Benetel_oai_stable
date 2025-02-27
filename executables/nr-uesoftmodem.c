@@ -42,6 +42,7 @@
 
 //#undef FRAME_LENGTH_COMPLEX_SAMPLES //there are two conflicting definitions, so we better make sure we don't use it at all
 #include "openair1/PHY/MODULATION/nr_modulation.h"
+#include "PHY/CODING/nrLDPC_coding/nrLDPC_coding_interface.h"
 #include "PHY/phy_vars_nr_ue.h"
 #include "PHY/NR_UE_TRANSPORT/nr_transport_proto_ue.h"
 #include "PHY/NR_TRANSPORT/nr_dlsch.h"
@@ -51,6 +52,7 @@
 #include "PHY_INTERFACE/phy_interface_vars.h"
 #include "NR_IF_Module.h"
 #include "openair1/SIMULATION/TOOLS/sim.h"
+#include "openair2/RRC/NR_UE/L2_interface_ue.h"
 
 #ifdef SMBV
 #include "PHY/TOOLS/smbv.h"
@@ -89,7 +91,6 @@ unsigned short config_frames[4] = {2,9,11,13};
 #include "pdcp.h"
 #include "actor.h"
 
-extern const char *duplex_mode[];
 THREAD_STRUCT thread_struct;
 nrUE_params_t nrUE_params = {0};
 
@@ -97,7 +98,6 @@ nrUE_params_t nrUE_params = {0};
 pthread_cond_t nfapi_sync_cond;
 pthread_mutex_t nfapi_sync_mutex;
 int nfapi_sync_var=-1; //!< protected by mutex \ref nfapi_sync_mutex
-uint16_t sf_ahead=6; //??? value ???
 pthread_cond_t sync_cond;
 pthread_mutex_t sync_mutex;
 int sync_var=-1; //!< protected by mutex \ref sync_mutex.
@@ -128,9 +128,6 @@ int16_t           node_synch_ref[MAX_NUM_CCs];
 int               otg_enabled;
 double            cpuf;
 uint32_t       N_RB_DL    = 106;
-
-// NTN cellSpecificKoffset-r17, but in slots for DL SCS
-unsigned int NTN_UE_Koffset = 0;
 
 int create_tasks_nrue(uint32_t ue_nb) {
   LOG_D(NR_RRC, "%s(ue_nb:%d)\n", __FUNCTION__, ue_nb);
@@ -219,7 +216,6 @@ void set_options(int CC_id, PHY_VARS_NR_UE *UE){
   UE->rf_map.card          = 0;
   UE->rf_map.chain         = CC_id + 0;
   UE->max_ldpc_iterations  = nrUE_params.max_ldpc_iterations;
-  UE->ldpc_offload_enable  = nrUE_params.ldpc_offload_flag;
   UE->UE_scan_carrier      = nrUE_params.UE_scan_carrier;
   UE->UE_fo_compensation   = nrUE_params.UE_fo_compensation;
   UE->if_freq              = nrUE_params.if_freq;
@@ -273,12 +269,13 @@ void init_openair0()
     openair0_cfg[card].tx_num_channels = min(4, frame_parms->nb_antennas_tx);
     openair0_cfg[card].rx_num_channels = min(4, frame_parms->nb_antennas_rx);
 
-    LOG_I(PHY, "HW: Configuring card %d, sample_rate %f, tx/rx num_channels %d/%d, duplex_mode %s\n",
-      card,
-      openair0_cfg[card].sample_rate,
-      openair0_cfg[card].tx_num_channels,
-      openair0_cfg[card].rx_num_channels,
-      duplex_mode[openair0_cfg[card].duplex_mode]);
+    LOG_I(PHY,
+          "HW: Configuring card %d, sample_rate %f, tx/rx num_channels %d/%d, duplex_mode %s\n",
+          card,
+          openair0_cfg[card].sample_rate,
+          openair0_cfg[card].tx_num_channels,
+          openair0_cfg[card].rx_num_channels,
+          duplex_mode_txt[openair0_cfg[card].duplex_mode]);
 
     if (is_sidelink) {
       dl_carrier = frame_parms->dl_CarrierFreq;
@@ -388,6 +385,7 @@ configmodule_interface_t *uniqCfg = NULL;
 
 // A global var to reduce the changes size
 ldpc_interface_t ldpc_interface = {0}, ldpc_interface_offload = {0};
+nrLDPC_coding_interface_t nrLDPC_coding_interface = {0};
 
 int main(int argc, char **argv)
 {
@@ -405,8 +403,8 @@ int main(int argc, char **argv)
   // get options and fill parameters from configuration file
 
   get_options(uniqCfg); // Command-line options specific for NRUE
-
-  get_common_options(uniqCfg, SOFTMODEM_5GUE_BIT);
+  IS_SOFTMODEM_5GUE = true;
+  get_common_options(uniqCfg);
   CONFIG_CLEARRTFLAG(CONFIG_NOEXITONHELP);
 
   softmodem_verify_mode(get_softmodem_params());
@@ -427,10 +425,8 @@ int main(int argc, char **argv)
 
   init_opt();
 
-  if (nrUE_params.ldpc_offload_flag)
-    load_LDPClib("_t2", &ldpc_interface_offload);
-
-  load_LDPClib(NULL, &ldpc_interface);
+  int ret_loader = load_nrLDPC_coding_interface(NULL, &nrLDPC_coding_interface);
+  AssertFatal(ret_loader == 0, "error loading LDPC library\n");
 
   if (ouput_vcd) {
     vcd_signal_dumper_init("/tmp/openair_dump_nrUE.vcd");
@@ -445,6 +441,8 @@ int main(int argc, char **argv)
     for (int CC_id = 0; CC_id < MAX_NUM_CCs; CC_id++) {
       PHY_vars_UE_g[inst][CC_id] = malloc(sizeof(*PHY_vars_UE_g[inst][CC_id]));
       memset(PHY_vars_UE_g[inst][CC_id], 0, sizeof(*PHY_vars_UE_g[inst][CC_id]));
+      // All instances use the same coding interface
+      PHY_vars_UE_g[inst][CC_id]->nrLDPC_coding_interface = nrLDPC_coding_interface;
     }
   }
 
@@ -490,6 +488,12 @@ int main(int argc, char **argv)
                                     get_softmodem_params()->numerology,
                                     nr_band);
         } else {
+	  MessageDef *msg = NULL;
+	  do {
+	    itti_poll_msg(TASK_MAC_UE, &msg);
+	    if (msg)
+	      process_msg_rcc_to_mac(msg);
+	  } while (msg);
           fapi_nr_config_request_t *nrUE_config = &UE[CC_id]->nrUE_config;
           nr_init_frame_parms_ue(&UE[CC_id]->frame_parms, nrUE_config, mac->nr_band);
         }
@@ -499,6 +503,7 @@ int main(int argc, char **argv)
         for (int i = 0; i < NUM_DL_ACTORS; i++) {
           init_actor(&UE[CC_id]->dl_actors[i], "DL_", -1);
         }
+        init_actor(&UE[CC_id]->ul_actor, "UL_", -1);
         init_nr_ue_vars(UE[CC_id], inst);
 
         if (UE[CC_id]->sl_mode) {
@@ -518,9 +523,6 @@ int main(int argc, char **argv)
       }
     }
 
-    // NTN cellSpecificKoffset-r17, but in slots for DL SCS
-    NTN_UE_Koffset = nrUE_params.ntn_koffset << PHY_vars_UE_g[0][0]->frame_parms.numerology_index;
-
     init_openair0();
     lock_memory_to_ram();
 
@@ -529,6 +531,11 @@ int main(int argc, char **argv)
     }
     if (IS_SOFTMODEM_IMSCOPE_ENABLED) {
       load_softscope("im", PHY_vars_UE_g[0][0]);
+    }
+    AssertFatal(!(IS_SOFTMODEM_IMSCOPE_ENABLED && IS_SOFTMODEM_IMSCOPE_RECORD_ENABLED),
+                "Data recoding and ImScope cannot be enabled at the same time\n");
+    if (IS_SOFTMODEM_IMSCOPE_RECORD_ENABLED) {
+      load_module_shlib("imscope_record", NULL, 0, PHY_vars_UE_g[0][0]);
     }
 
     for (int inst = 0; inst < NB_UE_INST; inst++) {
@@ -570,6 +577,7 @@ int main(int argc, char **argv)
     }
   }
 
+  free_nrLDPC_coding_interface(&nrLDPC_coding_interface);
   free(pckg);
   return 0;
 }

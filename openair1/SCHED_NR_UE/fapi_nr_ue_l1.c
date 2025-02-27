@@ -41,8 +41,7 @@
 #include "utils.h"
 #include "openair2/PHY_INTERFACE/queue_t.h"
 #include "SCHED_NR_UE/phy_sch_processing_time.h"
-
-extern PHY_VARS_NR_UE ***PHY_vars_UE_g;
+#include "openair1/PHY/phy_extern_nr_ue.h"
 
 const char *const dl_pdu_type[] = {"DCI", "DLSCH", "RA_DLSCH", "SI_DLSCH", "P_DLSCH", "CSI_RS", "CSI_IM", "TA"};
 const char *const ul_pdu_type[] = {"PRACH", "PUCCH", "PUSCH", "SRS"};
@@ -178,10 +177,11 @@ int8_t nr_ue_scheduled_response_stub(nr_scheduled_response_t *scheduled_response
               crc_ind->crc_list[j].tb_crc_status = 0;
               crc_ind->crc_list[j].timing_advance = 31;
               crc_ind->crc_list[j].ul_cqi = 255;
-              AssertFatal(mac->nr_ue_emul_l1.harq[crc_ind->crc_list[j].harq_id].active_ul_harq_sfn_slot == -1,
+              emul_l1_harq_t *harq = &mac->nr_ue_emul_l1.harq[crc_ind->crc_list[j].harq_id];
+              AssertFatal(harq->active_ul_harq_sfn == -1 && harq->active_ul_harq_slot == -1,
                           "We did not send an active CRC when we should have!\n");
-              mac->nr_ue_emul_l1.harq[crc_ind->crc_list[j].harq_id].active_ul_harq_sfn_slot =
-                  NFAPI_SFNSLOT2HEX(crc_ind->sfn, crc_ind->slot);
+              harq->active_ul_harq_sfn = crc_ind->sfn;
+              harq->active_ul_harq_slot = crc_ind->slot;
               LOG_D(NR_MAC,
                     "This is sched sfn/sl [%d %d] and crc sfn/sl [%d %d] with mcs_index in ul_cqi -> %d\n",
                     frame,
@@ -287,6 +287,26 @@ static void configure_dlsch(NR_UE_DLSCH_t *dlsch0,
                             NR_UE_MAC_INST_t *mac,
                             int rnti)
 {
+  // Temporary code to process type0 as type1 when the RB allocation is contiguous
+  if (dlsch_config_pdu->resource_alloc == 0) {
+    dlsch_config_pdu->number_rbs = count_bits(dlsch_config_pdu->rb_bitmap, sizeofArray(dlsch_config_pdu->rb_bitmap));
+    int state = 0;
+    for (int i = 0; i < sizeof(dlsch_config_pdu->rb_bitmap) * 8; i++) {
+      int allocated = dlsch_config_pdu->rb_bitmap[i / 8] & (1 << (i % 8));
+      if (allocated) {
+        if (state == 0) {
+          dlsch_config_pdu->start_rb = i;
+          state = 1;
+        } else
+          AssertFatal(state == 1, "non-contiguous RB allocation in RB allocation type 0 not implemented");
+      } else {
+        if (state == 1) {
+          state = 2;
+        }
+      }
+    }
+  }
+
   const uint8_t current_harq_pid = dlsch_config_pdu->harq_process_nbr;
   dlsch0->active = true;
   dlsch0->rnti = rnti;
@@ -324,6 +344,19 @@ static void configure_dlsch(NR_UE_DLSCH_t *dlsch0,
     LOG_W(NR_MAC, "dlsch0_harq->status not ACTIVE due to false retransmission harq pid: %d\n", current_harq_pid);
     update_harq_status(mac, current_harq_pid, dlsch0_harq->decodeResult);
   }
+}
+
+static void configure_ntn_params(PHY_VARS_NR_UE *ue, fapi_nr_dl_ntn_config_command_pdu* ntn_params_message)
+{
+  if (!ue->ntn_config_message) {
+    ue->ntn_config_message = CALLOC(1, sizeof(*ue->ntn_config_message));
+  }
+
+  ue->ntn_config_message->ntn_config_params.cell_specific_k_offset = ntn_params_message->cell_specific_k_offset;
+  ue->ntn_config_message->ntn_config_params.N_common_ta_adj = ntn_params_message->N_common_ta_adj;
+  ue->ntn_config_message->ntn_config_params.ntn_ta_commondrift = ntn_params_message->ntn_ta_commondrift;
+  ue->ntn_config_message->ntn_config_params.ntn_total_time_advance_ms = ntn_params_message->ntn_total_time_advance_ms;
+  ue->ntn_config_message->update = true;
 }
 
 static void configure_ta_command(PHY_VARS_NR_UE *ue, fapi_nr_ta_command_pdu *ta_command_pdu)
@@ -450,6 +483,9 @@ static void nr_ue_scheduled_response_dl(NR_UE_MAC_INST_t *mac,
       } break;
       case FAPI_NR_CONFIG_TA_COMMAND:
         configure_ta_command(phy, &pdu->ta_command_pdu);
+        break;
+      case FAPI_NR_DL_NTN_CONFIG_PARAMS:
+        configure_ntn_params(phy, &pdu->ntn_config_command_pdu);
         break;
       default:
         LOG_W(PHY, "unhandled dl pdu type %d \n", pdu->pdu_type);

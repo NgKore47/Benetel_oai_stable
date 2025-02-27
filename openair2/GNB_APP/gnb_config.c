@@ -113,7 +113,10 @@ void prepare_scc(NR_ServingCellConfigCommon_t *scc)
   scc->ssb_periodicityServingCell = calloc_or_fail(1, sizeof(*scc->ssb_periodicityServingCell));
   scc->ssbSubcarrierSpacing = calloc_or_fail(1, sizeof(*scc->ssbSubcarrierSpacing));
   scc->tdd_UL_DL_ConfigurationCommon = calloc_or_fail(1, sizeof(*scc->tdd_UL_DL_ConfigurationCommon));
-  scc->tdd_UL_DL_ConfigurationCommon->pattern2 = calloc_or_fail(1, sizeof(*scc->tdd_UL_DL_ConfigurationCommon->pattern2));
+  struct NR_TDD_UL_DL_ConfigCommon *tdd = scc->tdd_UL_DL_ConfigurationCommon;
+  tdd->pattern1.ext1 = calloc_or_fail(1, sizeof(*tdd->pattern1.ext1));
+  tdd->pattern1.ext1->dl_UL_TransmissionPeriodicity_v1530 =
+      calloc_or_fail(1, sizeof(*tdd->pattern1.ext1->dl_UL_TransmissionPeriodicity_v1530));
   scc->downlinkConfigCommon = calloc_or_fail(1, sizeof(*scc->downlinkConfigCommon));
   scc->downlinkConfigCommon->frequencyInfoDL = calloc_or_fail(1, sizeof(*scc->downlinkConfigCommon->frequencyInfoDL));
   scc->downlinkConfigCommon->initialDownlinkBWP = calloc_or_fail(1, sizeof(*scc->downlinkConfigCommon->initialDownlinkBWP));
@@ -182,6 +185,7 @@ void prepare_scc(NR_ServingCellConfigCommon_t *scc)
 
   scc->ext2->ntn_Config_r17->ephemerisInfo_r17 = calloc_or_fail(1, sizeof(*scc->ext2->ntn_Config_r17->ephemerisInfo_r17));
   scc->ext2->ntn_Config_r17->ta_Info_r17 = calloc_or_fail(1, sizeof(*scc->ext2->ntn_Config_r17->ta_Info_r17));
+  scc->ext2->ntn_Config_r17->ta_Info_r17->ta_CommonDrift_r17 = calloc_or_fail(1, sizeof(*scc->ext2->ntn_Config_r17->ta_Info_r17->ta_CommonDrift_r17));
 
   scc->ext2->ntn_Config_r17->ephemerisInfo_r17->present = NR_EphemerisInfo_r17_PR_positionVelocity_r17;
   scc->ext2->ntn_Config_r17->ephemerisInfo_r17->choice.positionVelocity_r17 =
@@ -271,15 +275,29 @@ void fill_scc_sim(NR_ServingCellConfigCommon_t *scc, uint64_t *ssb_bitmap, int N
   scc->dmrs_TypeA_Position = NR_ServingCellConfigCommon__dmrs_TypeA_Position_pos2;
   *scc->ssbSubcarrierSpacing = mu_dl;
 
-  struct NR_FrequencyInfoDL *frequencyInfoDL = scc->downlinkConfigCommon->frequencyInfoDL;
-  if (mu_dl == 0) {
-    *frequencyInfoDL->absoluteFrequencySSB = 520432;
-    *frequencyInfoDL->frequencyBandList.list.array[0] = 38;
-    frequencyInfoDL->absoluteFrequencyPointA = 520000;
-  } else {
-    *frequencyInfoDL->absoluteFrequencySSB = 641032;
-    *frequencyInfoDL->frequencyBandList.list.array[0] = 78;
-    frequencyInfoDL->absoluteFrequencyPointA = 640000;
+  NR_FrequencyInfoDL_t *frequencyInfoDL = scc->downlinkConfigCommon->frequencyInfoDL;
+  NR_TDD_UL_DL_ConfigCommon_t *tdd_UL_DL_Config = scc->tdd_UL_DL_ConfigurationCommon;
+  switch (mu_dl) {
+    case 0 :
+      *frequencyInfoDL->absoluteFrequencySSB = 520432;
+      *frequencyInfoDL->frequencyBandList.list.array[0] = 38;
+      frequencyInfoDL->absoluteFrequencyPointA = 520000;
+      tdd_UL_DL_Config->pattern1.dl_UL_TransmissionPeriodicity = NR_TDD_UL_DL_Pattern__dl_UL_TransmissionPeriodicity_ms10;
+      break;
+    case 1 :
+      *frequencyInfoDL->absoluteFrequencySSB = 641032;
+      *frequencyInfoDL->frequencyBandList.list.array[0] = 78;
+      frequencyInfoDL->absoluteFrequencyPointA = 640000;
+      tdd_UL_DL_Config->pattern1.dl_UL_TransmissionPeriodicity = NR_TDD_UL_DL_Pattern__dl_UL_TransmissionPeriodicity_ms5;
+      break;
+    case 3 :
+      *frequencyInfoDL->absoluteFrequencySSB = 2071387;
+      *frequencyInfoDL->frequencyBandList.list.array[0] = 257;
+      frequencyInfoDL->absoluteFrequencyPointA = 2071003;
+      tdd_UL_DL_Config->pattern1.dl_UL_TransmissionPeriodicity = NR_TDD_UL_DL_Pattern__dl_UL_TransmissionPeriodicity_ms1p25;
+      break;
+     default :
+       AssertFatal(false, "Numerolgy %d not supported\n", mu_dl);
   }
 
   *frequencyInfoDL->scs_SpecificCarrierList.list.array[0] = configure_scs_carrier(mu_dl, N_RB_DL);
@@ -303,7 +321,19 @@ void fill_scc_sim(NR_ServingCellConfigCommon_t *scc, uint64_t *ssb_bitmap, int N
               timedomainresourceallocation1);
 
   struct NR_FrequencyInfoUL *frequencyInfoUL = scc->uplinkConfigCommon->frequencyInfoUL;
-  *frequencyInfoUL->frequencyBandList->list.array[0] = mu_ul ? 78 : 38;
+  switch (mu_ul) {
+    case 0 :
+      *frequencyInfoUL->frequencyBandList->list.array[0] = 38;
+      break;
+    case 1 :
+      *frequencyInfoUL->frequencyBandList->list.array[0] = 78;
+      break;
+    case 3 :
+      *frequencyInfoUL->frequencyBandList->list.array[0] = 257;
+      break;
+     default :
+       AssertFatal(false, "Numerolgy %d not supported\n", mu_ul);
+  }
   *frequencyInfoUL->absoluteFrequencyPointA = -1;
   *frequencyInfoUL->scs_SpecificCarrierList.list.array[0] = configure_scs_carrier(mu_ul, N_RB_UL);
   *frequencyInfoUL->p_Max = 20;
@@ -345,27 +375,61 @@ void fill_scc_sim(NR_ServingCellConfigCommon_t *scc, uint64_t *ssb_bitmap, int N
   scc->ssb_PositionsInBurst->present = NR_ServingCellConfigCommon__ssb_PositionsInBurst_PR_mediumBitmap;
   *ssb_bitmap = 0xff;
 
-  struct NR_TDD_UL_DL_ConfigCommon *tdd_UL_DL_ConfigurationCommon = scc->tdd_UL_DL_ConfigurationCommon;
-  tdd_UL_DL_ConfigurationCommon->referenceSubcarrierSpacing = mu_dl;
+  tdd_UL_DL_Config->referenceSubcarrierSpacing = mu_dl;
 
-  NR_TDD_UL_DL_Pattern_t *p1 = &tdd_UL_DL_ConfigurationCommon->pattern1;
-  p1->dl_UL_TransmissionPeriodicity = (mu_dl == 0) ? NR_TDD_UL_DL_Pattern__dl_UL_TransmissionPeriodicity_ms10
-                                                   : NR_TDD_UL_DL_Pattern__dl_UL_TransmissionPeriodicity_ms5;
+  NR_TDD_UL_DL_Pattern_t *p1 = &tdd_UL_DL_Config->pattern1;
   p1->nrofDownlinkSlots = 7;
   p1->nrofDownlinkSymbols = 6;
   p1->nrofUplinkSlots = 2;
   p1->nrofUplinkSymbols = 4;
 
-  struct NR_TDD_UL_DL_Pattern *p2 = tdd_UL_DL_ConfigurationCommon->pattern2;
-  p2->dl_UL_TransmissionPeriodicity = 321;
-  p2->nrofDownlinkSlots = -1;
-  p2->nrofDownlinkSymbols = -1;
-  p2->nrofUplinkSlots = -1;
-  p2->nrofUplinkSymbols = -1;
+  struct NR_TDD_UL_DL_Pattern *p2 = tdd_UL_DL_Config->pattern2;
+  if (p2) {
+    p2->dl_UL_TransmissionPeriodicity = 321;
+    p2->nrofDownlinkSlots = -1;
+    p2->nrofDownlinkSymbols = -1;
+    p2->nrofUplinkSlots = -1;
+    p2->nrofUplinkSymbols = -1;
+  }
 
   scc->ss_PBCH_BlockPower = 20;
 }
 
+static void fix_tdd_pattern(NR_ServingCellConfigCommon_t *scc)
+{
+  NR_TDD_UL_DL_Pattern_t *pattern1 = &scc->tdd_UL_DL_ConfigurationCommon->pattern1;
+  int pattern_ext = pattern1->dl_UL_TransmissionPeriodicity - 8;
+  // Check if the pattern1 extension is configured and set the value accordingly
+  if (pattern_ext >= 0) {
+    pattern1->ext1 = calloc_or_fail(1, sizeof(struct NR_TDD_UL_DL_Pattern__ext1));
+    pattern1->ext1->dl_UL_TransmissionPeriodicity_v1530 =
+        calloc_or_fail(1, sizeof(*pattern1->ext1->dl_UL_TransmissionPeriodicity_v1530));
+    *pattern1->ext1->dl_UL_TransmissionPeriodicity_v1530 = pattern_ext;
+    pattern1->dl_UL_TransmissionPeriodicity = 5;
+  } else {
+    pattern1->ext1 = NULL;
+  }
+  struct NR_TDD_UL_DL_Pattern *pattern2 = scc->tdd_UL_DL_ConfigurationCommon->pattern2;
+  if (pattern2 != NULL) {
+    /* The pattern2 is not configured free the memory these shall not be encoded with default values in SIB1 */
+    if (pattern2->dl_UL_TransmissionPeriodicity == -1) {
+      free(pattern2);
+      pattern2 = NULL;
+    } else {
+      // Check if the pattern2 extension is configured and set the value accordingly
+      pattern_ext = pattern2->dl_UL_TransmissionPeriodicity - 8;
+      if (pattern_ext >= 0) {
+        pattern2->ext1 = calloc_or_fail(1, sizeof(*pattern2->ext1));
+        pattern2->ext1->dl_UL_TransmissionPeriodicity_v1530 =
+            CALLOC(1, sizeof(*pattern2->ext1->dl_UL_TransmissionPeriodicity_v1530));
+        *pattern2->ext1->dl_UL_TransmissionPeriodicity_v1530 = pattern_ext;
+        pattern2->dl_UL_TransmissionPeriodicity = 5;
+      } else {
+        pattern2->ext1 = NULL;
+      }
+    }
+  }
+}
 
 void fix_scc(NR_ServingCellConfigCommon_t *scc, uint64_t ssbmap)
 {
@@ -436,11 +500,7 @@ void fix_scc(NR_ServingCellConfigCommon_t *scc, uint64_t ssbmap)
     ASN_STRUCT_FREE(asn_DEF_NR_TDD_UL_DL_ConfigCommon, scc->tdd_UL_DL_ConfigurationCommon);
     scc->tdd_UL_DL_ConfigurationCommon = NULL;
   } else { // TDD
-    if (scc->tdd_UL_DL_ConfigurationCommon->pattern2->dl_UL_TransmissionPeriodicity > 320 ) {
-      free(scc->tdd_UL_DL_ConfigurationCommon->pattern2);
-      scc->tdd_UL_DL_ConfigurationCommon->pattern2 = NULL;
-    }
-
+    fix_tdd_pattern(scc);
   }
 
   if ((int)*scc->uplinkConfigCommon->initialUplinkBWP->rach_ConfigCommon->choice.setup->msg1_SubcarrierSpacing == -1) {
@@ -469,7 +529,12 @@ void fix_scc(NR_ServingCellConfigCommon_t *scc, uint64_t ssbmap)
     free(scc->ext2->ntn_Config_r17->cellSpecificKoffset_r17);
     scc->ext2->ntn_Config_r17->cellSpecificKoffset_r17 = NULL;
   }
+  if (*scc->ext2->ntn_Config_r17->ta_Info_r17->ta_CommonDrift_r17 == 0) {
+    free(scc->ext2->ntn_Config_r17->ta_Info_r17->ta_CommonDrift_r17);
+    scc->ext2->ntn_Config_r17->ta_Info_r17->ta_CommonDrift_r17 = NULL;
+  }
   if (scc->ext2->ntn_Config_r17->ta_Info_r17->ta_Common_r17 == -1) {
+    free(scc->ext2->ntn_Config_r17->ta_Info_r17->ta_CommonDrift_r17);
     free(scc->ext2->ntn_Config_r17->ta_Info_r17);
     scc->ext2->ntn_Config_r17->ta_Info_r17 = NULL;
   }
@@ -982,6 +1047,16 @@ void RCconfig_NR_L1(void)
   }
 }
 
+/**
+ * @brief Returns true when pattern2 is filled in
+ */
+bool is_pattern2_config(paramdef_t *param)
+{
+  if (param == NULL || param->i64ptr == NULL || *(param->i64ptr) == -1)
+    return false;
+  return true;
+}
+
 static NR_ServingCellConfigCommon_t *get_scc_config(configmodule_interface_t *cfg, int minRXTXTIME)
 {
   NR_ServingCellConfigCommon_t *scc = calloc_or_fail(1, sizeof(*scc));
@@ -1002,6 +1077,33 @@ static NR_ServingCellConfigCommon_t *get_scc_config(configmodule_interface_t *cf
     sprintf(aprefix, "%s.[%i].%s.[%i]", GNB_CONFIG_STRING_GNB_LIST,0,GNB_CONFIG_STRING_SERVINGCELLCONFIGCOMMON, 0);
     config_get(cfg, SCCsParams, sizeofArray(SCCsParams), aprefix);
     config_get(cfg, MsgASCCsParams, sizeofArray(MsgASCCsParams), aprefix);
+    // NR_TDD-UL-DL-ConfigCommon pattern2 (optional IE)
+    // fetch params
+    struct NR_TDD_UL_DL_Pattern p2;
+    paramdef_t pattern2Params[] = SCC_PATTERN2_PARAMS_DESC(p2);
+    char aprefix[MAX_OPTNAME_SIZE * 2 + 8];
+    sprintf(aprefix, "%s.[%i].%s.[%i].%s", GNB_CONFIG_STRING_GNB_LIST, 0, GNB_CONFIG_STRING_SERVINGCELLCONFIGCOMMON, 0, SCC_PATTERN2_STRING_CONFIG);
+    config_get(config_get_if(), pattern2Params, sizeofArray(pattern2Params), aprefix);
+    // check validity
+    bool is_pattern2 = false;
+    for (int i = 0; i < sizeofArray(pattern2Params); i++) {
+      is_pattern2 |= is_pattern2_config(pattern2Params);
+    }
+
+    if (is_pattern2) {
+      LOG_I(GNB_APP, "tdd->pattern2 present\n");
+      // allocate memory
+      struct NR_TDD_UL_DL_ConfigCommon *tdd = scc->tdd_UL_DL_ConfigurationCommon;
+      tdd->pattern2 = calloc_or_fail(1, sizeof(*tdd->pattern2));
+      tdd->pattern2->ext1 = calloc_or_fail(1, sizeof(struct NR_TDD_UL_DL_Pattern__ext1));
+      tdd->pattern2->ext1->dl_UL_TransmissionPeriodicity_v1530 = calloc_or_fail(1, sizeof(*tdd->pattern2->ext1->dl_UL_TransmissionPeriodicity_v1530));
+      // fill in scc
+      *scc->tdd_UL_DL_ConfigurationCommon->pattern2 = p2;
+      AssertFatal(p2.nrofUplinkSlots ^ scc->tdd_UL_DL_ConfigurationCommon->pattern1.nrofUplinkSlots,
+                  "UL slots in pattern1 (%ld) and pattern2 (%ld) are mutually exclusive (e.g. DDDFUU DDDD, DDDD DDDFUU)\n",
+                  scc->tdd_UL_DL_ConfigurationCommon->pattern1.nrofUplinkSlots,
+                  p2.nrofUplinkSlots);
+    }
     struct NR_FrequencyInfoDL *frequencyInfoDL = scc->downlinkConfigCommon->frequencyInfoDL;
     LOG_I(RRC,
           "Read in ServingCellConfigCommon (PhysCellId %d, ABSFREQSSB %d, DLBand %d, ABSFREQPOINTA %d, DLBW "
@@ -1033,11 +1135,25 @@ static NR_ServingCellConfigCommon_t *get_scc_config(configmodule_interface_t *cf
   AssertFatal(pcc != NULL && pcc->commonSearchSpaceList == NULL, "memory leak\n");
   pcc->commonSearchSpaceList = calloc_or_fail(1, sizeof(*pcc->commonSearchSpaceList));
 
-  NR_SearchSpace_t *ss1 = rrc_searchspace_config(true, 1, 0);
+  // TODO: Make CSS aggregation levels configurable
+  int css_num_agg_level_candidates[NUM_PDCCH_AGG_LEVELS];
+  css_num_agg_level_candidates[PDCCH_AGG_LEVEL1] = NR_SearchSpace__nrofCandidates__aggregationLevel1_n0;
+  if (get_softmodem_params()->usim_test) {
+    css_num_agg_level_candidates[PDCCH_AGG_LEVEL2] = NR_SearchSpace__nrofCandidates__aggregationLevel2_n0;
+    css_num_agg_level_candidates[PDCCH_AGG_LEVEL4] = NR_SearchSpace__nrofCandidates__aggregationLevel4_n1;
+    css_num_agg_level_candidates[PDCCH_AGG_LEVEL8] = NR_SearchSpace__nrofCandidates__aggregationLevel8_n1;
+  } else {
+    css_num_agg_level_candidates[PDCCH_AGG_LEVEL2] = NR_SearchSpace__nrofCandidates__aggregationLevel2_n0;
+    css_num_agg_level_candidates[PDCCH_AGG_LEVEL4] = NR_SearchSpace__nrofCandidates__aggregationLevel4_n1;
+    css_num_agg_level_candidates[PDCCH_AGG_LEVEL8] = NR_SearchSpace__nrofCandidates__aggregationLevel8_n0;
+  }
+  css_num_agg_level_candidates[PDCCH_AGG_LEVEL16] = NR_SearchSpace__nrofCandidates__aggregationLevel16_n0;
+
+  NR_SearchSpace_t *ss1 = rrc_searchspace_config(true, 1, 0, css_num_agg_level_candidates);
   asn1cSeqAdd(&pcc->commonSearchSpaceList->list, ss1);
-  NR_SearchSpace_t *ss2 = rrc_searchspace_config(true, 2, 0);
+  NR_SearchSpace_t *ss2 = rrc_searchspace_config(true, 2, 0, css_num_agg_level_candidates);
   asn1cSeqAdd(&pcc->commonSearchSpaceList->list, ss2);
-  NR_SearchSpace_t *ss3 = rrc_searchspace_config(true, 3, 0);
+  NR_SearchSpace_t *ss3 = rrc_searchspace_config(true, 3, 0, css_num_agg_level_candidates);
   asn1cSeqAdd(&pcc->commonSearchSpaceList->list, ss3);
 
   asn1cCallocOne(pcc->searchSpaceSIB1,  0);
@@ -1118,6 +1234,8 @@ static int read_du_cell_info(configmodule_interface_t *cfg,
   paramdef_t PLMNParams[] = GNBPLMNPARAMS_DESC;
   /* map parameter checking array instances to parameter definition array instances */
   checkedparam_t config_check_PLMNParams[] = PLMNPARAMS_CHECK;
+  static_assert(sizeofArray(config_check_PLMNParams) == sizeofArray(PLMNParams),
+                "config_check_PLMNParams and PLMNParams should have the same size");
   for (int I = 0; I < sizeof(PLMNParams) / sizeof(paramdef_t); ++I)
     PLMNParams[I].chkPptr = &(config_check_PLMNParams[I]);
   paramlist_def_t PLMNParamList = {GNB_CONFIG_STRING_PLMN_LIST, NULL, 0};
@@ -1151,6 +1269,8 @@ static int read_du_cell_info(configmodule_interface_t *cfg,
   paramdef_t SNSSAIParams[] = GNBSNSSAIPARAMS_DESC;
   paramlist_def_t SNSSAIParamList = {GNB_CONFIG_STRING_SNSSAI_LIST, NULL, 0};
   checkedparam_t config_check_SNSSAIParams[] = SNSSAIPARAMS_CHECK;
+  static_assert(sizeofArray(config_check_SNSSAIParams) == sizeofArray(SNSSAIParams),
+                "config_check_SNSSAIParams and SNSSAIParams should have the same size");
   for (int J = 0; J < sizeofArray(SNSSAIParams); ++J)
     SNSSAIParams[J].chkPptr = &(config_check_SNSSAIParams[J]);
   char snssaistr[MAX_OPTNAME_SIZE * 2 + 8];
@@ -1166,7 +1286,7 @@ static int read_du_cell_info(configmodule_interface_t *cfg,
   return 1;
 }
 
-static f1ap_tdd_info_t read_tdd_config(const NR_ServingCellConfigCommon_t *scc)
+f1ap_tdd_info_t read_tdd_config(const NR_ServingCellConfigCommon_t *scc)
 {
   const NR_FrequencyInfoDL_t *dl = scc->downlinkConfigCommon->frequencyInfoDL;
   f1ap_tdd_info_t tdd = {
@@ -1195,7 +1315,27 @@ static f1ap_fdd_info_t read_fdd_config(const NR_ServingCellConfigCommon_t *scc)
   return fdd;
 }
 
-static f1ap_setup_req_t *RC_read_F1Setup(uint64_t id,
+f1ap_gnb_du_system_info_t *get_sys_info(NR_BCCH_BCH_Message_t *mib, const NR_BCCH_DL_SCH_Message_t *sib1)
+{
+  int buf_len = 3;
+  f1ap_gnb_du_system_info_t *sys_info = calloc_or_fail(1, sizeof(*sys_info));
+
+  sys_info->mib = calloc_or_fail(buf_len, sizeof(*sys_info->mib));
+  DevAssert(mib != NULL);
+  sys_info->mib_length = encode_MIB_NR(mib, 0, sys_info->mib, buf_len);
+  DevAssert(sys_info->mib_length == buf_len);
+
+  DevAssert(sib1 != NULL);
+  NR_SIB1_t *bcch_SIB1 = sib1->message.choice.c1->choice.systemInformationBlockType1;
+  sys_info->sib1 = calloc_or_fail(NR_MAX_SIB_LENGTH / 8, sizeof(*sys_info->sib1));
+  asn_enc_rval_t enc_rval = uper_encode_to_buffer(&asn_DEF_NR_SIB1, NULL, (void *)bcch_SIB1, sys_info->sib1, NR_MAX_SIB_LENGTH / 8);
+  AssertFatal(enc_rval.encoded > 0, "ASN1 message encoding failed (%s, %lu)!\n", enc_rval.failed_type->name, enc_rval.encoded);
+  sys_info->sib1_length = (enc_rval.encoded + 7) / 8;
+
+  return sys_info;
+}
+
+f1ap_setup_req_t *RC_read_F1Setup(uint64_t id,
                                          const char *name,
                                          const f1ap_served_cell_info_t *info,
                                          const NR_ServingCellConfigCommon_t *scc,
@@ -1244,24 +1384,7 @@ static f1ap_setup_req_t *RC_read_F1Setup(uint64_t id,
   if (IS_SA_MODE(get_softmodem_params())) {
     // in NSA we don't transmit SIB1, so cannot fill DU system information
     // so cannot send MIB either
-
-    int buf_len = 3; // this is what we assume in monolithic
-    req->cell[0].sys_info = calloc(1, sizeof(*req->cell[0].sys_info));
-    AssertFatal(req->cell[0].sys_info != NULL, "out of memory\n");
-    f1ap_gnb_du_system_info_t *sys_info = req->cell[0].sys_info;
-    sys_info->mib = calloc(buf_len, sizeof(*sys_info->mib));
-    DevAssert(sys_info->mib != NULL);
-    DevAssert(mib != NULL);
-    // encode only the mib message itself
-    sys_info->mib_length = encode_MIB_NR_setup(mib->message.choice.mib, 0, sys_info->mib, buf_len);
-    DevAssert(sys_info->mib_length == buf_len);
-
-    DevAssert(sib1 != NULL);
-    NR_SIB1_t *bcch_SIB1 = sib1->message.choice.c1->choice.systemInformationBlockType1;
-    sys_info->sib1 = calloc(NR_MAX_SIB_LENGTH / 8, sizeof(*sys_info->sib1));
-    asn_enc_rval_t enc_rval = uper_encode_to_buffer(&asn_DEF_NR_SIB1, NULL, (void *)bcch_SIB1, sys_info->sib1, NR_MAX_SIB_LENGTH / 8);
-    AssertFatal(enc_rval.encoded > 0, "ASN1 message encoding failed (%s, %lu)!\n", enc_rval.failed_type->name, enc_rval.encoded);
-    sys_info->sib1_length = (enc_rval.encoded + 7) / 8;
+    req->cell[0].sys_info = get_sys_info(mib, sib1);
   }
 
   int num = read_version(TO_STRING(NR_RRC_VERSION), &req->rrc_ver[0], &req->rrc_ver[1], &req->rrc_ver[2]);
@@ -1285,6 +1408,8 @@ void RCconfig_nr_macrlc(configmodule_interface_t *cfg)
   paramdef_t GNBParams[] = GNBPARAMS_DESC;
   /* map parameter checking array instances to parameter definition array instances */
   checkedparam_t config_check_GNBParams[] = GNBPARAMS_CHECK;
+  static_assert(sizeofArray(config_check_GNBParams) == sizeofArray(GNBParams),
+                "config_check_GNBParams and GNBParams should have the same size");
   for (int i = 0; i < sizeofArray(GNBParams); ++i)
     GNBParams[i].chkPptr = &(config_check_GNBParams[i]);
   config_getlist(cfg, &GNBParamList, GNBParams, sizeofArray(GNBParams), NULL);
@@ -1293,6 +1418,8 @@ void RCconfig_nr_macrlc(configmodule_interface_t *cfg)
   paramlist_def_t MacRLC_ParamList = {CONFIG_STRING_MACRLC_LIST, NULL, 0};
   /* map parameter checking array instances to parameter definition array instances */
   checkedparam_t config_check_MacRLCParams[] = MACRLCPARAMS_CHECK;
+  static_assert(sizeofArray(config_check_MacRLCParams) == sizeofArray(MacRLC_Params),
+                "config_check_MacRLCParams and MacRLC_Params should have the same size");
   for (int i = 0; i < sizeofArray(MacRLC_Params); ++i)
     MacRLC_Params[i].chkPptr = &(config_check_MacRLCParams[i]);
   config_getlist(config_get_if(), &MacRLC_ParamList, MacRLC_Params, sizeofArray(MacRLC_Params), NULL);
@@ -1394,6 +1521,34 @@ void RCconfig_nr_macrlc(configmodule_interface_t *cfg)
     }
   }
 
+  // Construct default aggragation level list or read from config
+  int uess_num_agg_level_candidates[NUM_PDCCH_AGG_LEVELS];
+  uess_num_agg_level_candidates[PDCCH_AGG_LEVEL1] = NR_SearchSpace__nrofCandidates__aggregationLevel1_n0;
+  if (get_softmodem_params()->usim_test) {
+    uess_num_agg_level_candidates[PDCCH_AGG_LEVEL2] = NR_SearchSpace__nrofCandidates__aggregationLevel2_n0;
+    uess_num_agg_level_candidates[PDCCH_AGG_LEVEL4] = NR_SearchSpace__nrofCandidates__aggregationLevel4_n1;
+    uess_num_agg_level_candidates[PDCCH_AGG_LEVEL8] = NR_SearchSpace__nrofCandidates__aggregationLevel8_n1;
+  } else {
+    uess_num_agg_level_candidates[PDCCH_AGG_LEVEL2] = NR_SearchSpace__nrofCandidates__aggregationLevel2_n2;
+    uess_num_agg_level_candidates[PDCCH_AGG_LEVEL4] = NR_SearchSpace__nrofCandidates__aggregationLevel4_n0;
+    uess_num_agg_level_candidates[PDCCH_AGG_LEVEL8] = NR_SearchSpace__nrofCandidates__aggregationLevel8_n0;
+  }
+  uess_num_agg_level_candidates[PDCCH_AGG_LEVEL16] = NR_SearchSpace__nrofCandidates__aggregationLevel16_n0;
+  int* agg_level_list = uess_num_agg_level_candidates;
+  int num_agg_levels = 5;
+  if (GNBParamList.paramarray[0][GNB_UESS_AGG_LEVEL_LIST_IDX].numelt > 0) {
+    agg_level_list = GNBParamList.paramarray[0][GNB_UESS_AGG_LEVEL_LIST_IDX].iptr;
+    num_agg_levels = GNBParamList.paramarray[0][GNB_UESS_AGG_LEVEL_LIST_IDX].numelt;
+  }
+  memcpy(config.num_agg_level_candidates, agg_level_list, sizeof(int) * num_agg_levels);
+  LOG_I(NR_MAC,
+        "Candidates per PDCCH aggregation level on UESS: L1: %d, L2: %d, L4: %d, L8: %d, L16: %d\n",
+        config.num_agg_level_candidates[PDCCH_AGG_LEVEL1],
+        config.num_agg_level_candidates[PDCCH_AGG_LEVEL2],
+        config.num_agg_level_candidates[PDCCH_AGG_LEVEL4],
+        config.num_agg_level_candidates[PDCCH_AGG_LEVEL8],
+        config.num_agg_level_candidates[PDCCH_AGG_LEVEL16]);
+
   NR_ServingCellConfigCommon_t *scc = get_scc_config(cfg, config.minRXTXTIME);
   //xer_fprint(stdout, &asn_DEF_NR_ServingCellConfigCommon, scc);
   NR_ServingCellConfig_t *scd = get_scd_config(cfg);
@@ -1406,6 +1561,8 @@ void RCconfig_nr_macrlc(configmodule_interface_t *cfg)
     for (j = 0; j < RC.nb_nr_macrlc_inst; j++) {
       RC.nb_nr_mac_CC[j] = *(MacRLC_ParamList.paramarray[j][MACRLC_CC_IDX].iptr);
       RC.nrmac[j]->pusch_target_snrx10 = *(MacRLC_ParamList.paramarray[j][MACRLC_PUSCHTARGETSNRX10_IDX].iptr);
+      RC.nrmac[j]->pusch_rssi_threshold = *(MacRLC_ParamList.paramarray[j][MACRLC_PUSCH_RSSI_THRES_IDX].iptr);
+      RC.nrmac[j]->pucch_rssi_threshold = *(MacRLC_ParamList.paramarray[j][MACRLC_PUCCH_RSSI_THRES_IDX].iptr);
       RC.nrmac[j]->pucch_target_snrx10 = *(MacRLC_ParamList.paramarray[j][MACRLC_PUCCHTARGETSNRX10_IDX].iptr);
       RC.nrmac[j]->ul_prbblack_SNR_threshold = *(MacRLC_ParamList.paramarray[j][MACRLC_UL_PRBBLACK_SNR_THRESHOLD_IDX].iptr);
       RC.nrmac[j]->pucch_failure_thres = *(MacRLC_ParamList.paramarray[j][MACRLC_PUCCHFAILURETHRES_IDX].iptr);
@@ -1903,6 +2060,8 @@ gNB_RRC_INST *RCconfig_NRRRC()
         paramlist_def_t PLMNParamList = {GNB_CONFIG_STRING_PLMN_LIST, NULL, 0};
         /* map parameter checking array instances to parameter definition array instances */
         checkedparam_t config_check_PLMNParams [] = PLMNPARAMS_CHECK;
+        static_assert(sizeofArray(config_check_PLMNParams) == sizeofArray(PLMNParams),
+                      "config_check_PLMNParams and PLMNParams should have the same size");
 
         for (int I = 0; I < sizeofArray(PLMNParams); ++I)
           PLMNParams[I].chkPptr = &(config_check_PLMNParams[I]);
@@ -2010,7 +2169,11 @@ int RCconfig_NR_NG(MessageDef *msg_p, uint32_t i) {
             paramlist_def_t SNSSAIParamList = {GNB_CONFIG_STRING_SNSSAI_LIST, NULL, 0};
             /* map parameter checking array instances to parameter definition array instances */
             checkedparam_t config_check_PLMNParams [] = PLMNPARAMS_CHECK;
+            static_assert(sizeofArray(config_check_PLMNParams) == sizeofArray(PLMNParams),
+                          "config_check_PLMNParams and PLMNParams should have the same size");
             checkedparam_t config_check_SNSSAIParams [] = SNSSAIPARAMS_CHECK;
+            static_assert(sizeofArray(config_check_SNSSAIParams) == sizeofArray(SNSSAIParams),
+                          "config_check_SNSSAIParams and SNSSAIParams should have the same size");
 
             for (int I = 0; I < sizeofArray(PLMNParams); ++I)
               PLMNParams[I].chkPptr = &(config_check_PLMNParams[I]);
@@ -2183,7 +2346,7 @@ void NRRCConfig(void)
 
   // Set num of gNBs instances
   RC.nb_nr_inst = GNBSParams[GNB_ACTIVE_GNBS_IDX].numelt;
-  AssertFatal(RC.nb_nr_inst == NUMBER_OF_gNB_MAX,
+  AssertFatal(RC.nb_nr_inst <= NUMBER_OF_gNB_MAX,
               "Configuration error: RC.nb_nr_inst (%d) must equal NUMBER_OF_gNB_MAX (%d).\n"
               "Currently, only one instance of each layer (L1, L2, L3) is supported.\n"
               "Ensure that nb_nr_inst matches the maximum allowed gNB instances in this configuration.",
@@ -2274,6 +2437,8 @@ int RCconfig_NR_X2(MessageDef *msg_p, uint32_t i) {
             paramlist_def_t PLMNParamList = {GNB_CONFIG_STRING_PLMN_LIST, NULL, 0};
             /* map parameter checking array instances to parameter definition array instances */
             checkedparam_t config_check_PLMNParams [] = PLMNPARAMS_CHECK;
+            static_assert(sizeofArray(config_check_PLMNParams) == sizeofArray(PLMNParams),
+                          "config_check_PLMNParams and PLMNParams should have the same size");
 
             for (int I = 0; I < sizeofArray(PLMNParams); ++I)
               PLMNParams[I].chkPptr = &(config_check_PLMNParams[I]);

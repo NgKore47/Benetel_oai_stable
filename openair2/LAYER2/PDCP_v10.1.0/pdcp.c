@@ -129,10 +129,6 @@ static sdu_size_t             pdcp_output_sdu_bytes_to_write;
 notifiedFIFO_t         pdcp_sdu_list;
 
 pdcp_enb_t pdcp_enb[MAX_NUM_CCs];
-
-
-extern int oai_exit;
-
 pthread_t pdcp_stats_thread_desc;
 /*! \fn bool pdcp_config_req_asn1 (const protocol_ctxt_t* const ctxt_pP, srb_flag_t srb_flagP, uint32_t  action, rb_id_t rb_id,
  * uint8_t rb_sn, uint8_t rb_report, uint16_t header_compression_profile, uint8_t security_mode) \brief  Function for RRC to
@@ -597,7 +593,6 @@ bool pdcp_data_ind(const protocol_ctxt_t *const ctxt_pP,
   uint8_t      rb_offset= (srb_flagP == 0) ? DTCH -1 :0;
   uint16_t     pdcp_uid=0;
 
-  MessageDef  *message_p        = NULL;
   uint32_t    rx_hfn_for_count;
   int         pdcp_sn_for_count;
   int         security_ok;
@@ -999,19 +994,11 @@ bool pdcp_data_ind(const protocol_ctxt_t *const ctxt_pP,
 
   if (LINK_ENB_PDCP_TO_GTPV1U) {
     if ((true == ctxt_pP->enb_flag) && (false == srb_flagP)) {
-      LOG_D(PDCP, "Sending packet to GTP, Calling GTPV1U_TUNNEL_DATA_REQ  ue %lx rab %ld len %u\n", ctxt_pP->rntiMaybeUEid, rb_id + 4, sdu_buffer_sizeP - payload_offset);
-      message_p = itti_alloc_new_message_sized(TASK_PDCP_ENB, 0, GTPV1U_TUNNEL_DATA_REQ,
-                                              sizeof(gtpv1u_tunnel_data_req_t) +
-                                              sdu_buffer_sizeP - payload_offset + GTPU_HEADER_OVERHEAD_MAX );
-      AssertFatal(message_p != NULL, "OUT OF MEMORY");
-      gtpv1u_tunnel_data_req_t *req=&GTPV1U_TUNNEL_DATA_REQ(message_p);
-      req->buffer       = (uint8_t*)(req+1);
-      memcpy(req->buffer + GTPU_HEADER_OVERHEAD_MAX, sdu_buffer_pP + payload_offset, sdu_buffer_sizeP - payload_offset);
-      req->length       = sdu_buffer_sizeP - payload_offset;
-      req->offset       = GTPU_HEADER_OVERHEAD_MAX;
-      req->ue_id = ctxt_pP->rntiMaybeUEid;
-      req->bearer_id    = rb_id + 4;
-      itti_send_msg_to_task(TASK_GTPV1_U, INSTANCE_DEFAULT, message_p);
+      ue_id_t ue_id = ctxt_pP->rntiMaybeUEid;
+      uint8_t *gtp_buf = sdu_buffer_pP + payload_offset;
+      size_t gtp_len = sdu_buffer_sizeP - payload_offset;
+      LOG_D(PDCP, "Sending packet to GTP  ue %lx rab %ld len %ld\n", ue_id, rb_id + 4, gtp_len);
+      gtpv1uSendDirect(INSTANCE_DEFAULT, ue_id, rb_id + 4, gtp_buf, gtp_len, false, false);
       packet_forwarded = true;
     }
   } else {
@@ -2185,22 +2172,35 @@ uint64_t pdcp_module_init( uint64_t pdcp_optmask, int id) {
 
   if (UE_NAS_USE_TUN) {
     int num_if = (NFAPI_MODE == NFAPI_UE_STUB_PNF || IS_SOFTMODEM_SIML1 || NFAPI_MODE == NFAPI_MODE_STANDALONE_PNF) ? MAX_MOBILES_PER_ENB : 1;
-    tun_init("oaitun_ue", num_if, id);
-    tun_init_mbms("oaitun_uem", id + 1);
-    tun_config(1, "10.0.2.2", NULL, "oaitun_uem");
+    int begx = (id == 0) ? 0 : id - 1;
+    int endx = (id == 0) ? num_if : id;
+    for (int i = begx; i < endx; i++) {
+      char ifname[IFNAMSIZ];
+      tun_generate_ifname(ifname, "oaitun_ue", i);
+      tun_init(ifname, i);
+    }
+    char ifname[IFNAMSIZ];
+    tun_generate_ifname(ifname, "oaitun_uem", id + 1);
+    tun_init_mbms(ifname);
+    tun_config(ifname, "10.0.2.2", NULL);
     LOG_I(PDCP, "UE pdcp will use tun interface\n");
   } else if (ENB_NAS_USE_TUN) {
-    tun_init("oaitun_enb", 1, 0);
-    tun_config(1, "10.0.1.1", NULL, "oaitun_enb");
+    char ifname[IFNAMSIZ];
+    tun_generate_ifname(ifname, "oaitun_enb", 0);
+    tun_init(ifname, 0);
+    tun_config(ifname, "10.0.1.1", NULL);
     if (pdcp_optmask & ENB_NAS_USE_TUN_W_MBMS_BIT) {
-      tun_init_mbms("oaitun_enm", 1);
-      tun_config(1, "10.0.2.1", NULL, "oaitun_enm");
+      tun_generate_ifname(ifname, "oaitun_enm", 0);
+      tun_init_mbms(ifname);
+      tun_config(ifname, "10.0.2.1", NULL);
       LOG_I(PDCP, "ENB pdcp will use mbms tun interface\n");
     }
     LOG_I(PDCP, "ENB pdcp will use tun interface\n");
   } else if (pdcp_optmask & ENB_NAS_USE_TUN_W_MBMS_BIT) {
-    tun_init_mbms("oaitun_enm", 0);
-    tun_config(1, "10.0.2.1", NULL, "oaitun_enm");
+    char ifname[IFNAMSIZ];
+    tun_generate_ifname(ifname, "oaitun_enm", 0);
+    tun_init_mbms(ifname);
+    tun_config(ifname, "10.0.2.1", NULL);
     LOG_I(PDCP, "ENB pdcp will use mbms tun interface\n");
   }
 
