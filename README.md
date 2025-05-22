@@ -305,7 +305,7 @@ If no, then first of all congratulations for reaching upto this point. It's grea
 
 Let's try harder and remeber the above statement everytime you fail.
 
-* First of all, remove all the other connections from your fibolan switch and use only two ports: one which is connectd to Benetel RU and other one is the DU server.
+* First of all, remove all the other connections from your fibrolan switch and use only two ports: one which is connectd to Benetel RU and other one is the DU server.
 * Set vlan port 3(only) on these fibrolan ports and no other vlan id.
 * Restart DU server
 * After the restart is done, confirm the settings that are mentioned in above sections like tuned-adm, vf, mac addr and other required things
